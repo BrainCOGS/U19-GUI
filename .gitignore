@@ -1,0 +1,6 @@
+experiments/*
+*.mat
+*.pdf
+*.m~
+*.txt
+
