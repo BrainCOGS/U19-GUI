@@ -3,4 +3,6 @@ experiments/*
 *.pdf
 *.m~
 *.txt
-
+*.png
+*.eps
+*.fig
