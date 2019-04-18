@@ -1,0 +1,3 @@
+#!/bin/sh
+
+git log -1 --pretty=oneline HEAD > $GIT_DIR/../version.txt
