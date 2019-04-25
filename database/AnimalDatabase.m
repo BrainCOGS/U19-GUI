@@ -4,9 +4,9 @@
 % pulled/pushed using this class as an interface. The list of all people/animals are kept in the
 % spreadsheet indicated by AnimalDatabase.DATABASE_ID, so for example if you use this URL to
 % access your database:
-%     https://docs.google.com/spreadsheets/d/1_dNYala2k0QIpZWpblcso_6UI9GnJ0URXYEHV-GWH4w/edit#gid=1296553442
+%     https://docs.google.com/spreadsheets/d/ABCDE/edit#gid=1296553442
 % then you should edit AnimalDatabase.m such that:
-%     DATABASE_ID = '1_dNYala2k0QIpZWpblcso_6UI9GnJ0URXYEHV-GWH4w'  
+%     DATABASE_ID = 'ABCDE'  
 %
 % Furthermore, the daily logs for individual mice are kept in one spreadsheet per researcher (who is
 % the primary responsible for those mice). For now when adding a researcher, one has to manually
@@ -93,15 +93,15 @@ classdef AnimalDatabase < handle
   
   %_________________________________________________________________________________________________
   properties (Constant)
-    CLIENT_ID             = '276999208890-3o10e2g9l8bj89549th4o7mdl8sp6fj3.apps.googleusercontent.com'
-    CLIENT_SECRET         = '285S2Xih85Y4gUVLwQXB-8zF'
+    CLIENT_ID             = getfield(load('database_config.mat'), 'client_id')
+    CLIENT_SECRET         = getfield(load('database_config.mat'), 'client_secret')
     GOOGLE_URL            = 'https://www.google.com'
     GOOGLESHEETS_URL      = 'https://docs.google.com/spreadsheets/d'
     EDIT_FORMAT           = '%s/%s/edit#gid=%s'
     EXPORT_FORMAT         = '%s/%s/export?format=csv&gid=%s'
     
     FIRST_SHEET           = '0'
-    DATABASE_ID           = '1_dNYala2k0QIpZWpblcso_6UI9GnJ0URXYEHV-GWH4w'
+    DATABASE_ID           = getfield(load('database_config.mat'), 'database_id')
     UPDATE_PERIOD         = 10
     UPDATE_PERIOD_SCALE   = 0.3
     NUM_POLLS_SCALE       = 3
@@ -3945,10 +3945,10 @@ classdef AnimalDatabase < handle
       
       %% Get raw data as a cell array
       url         = sprintf( AnimalDatabase.EXPORT_FORMAT, AnimalDatabase.GOOGLESHEETS_URL, database, sheet );
-      connection  = java.net.URL([], url, obj.httpHandler).openConnection();
+      connection  = java.net.URL([], url, obj.httpHandler).openConnection(); % Constructs an URL object
       try
         rawText   = connection.getInputStream();
-        rawText   = AnimalDatabase.readStream(rawText);
+        rawText   = AnimalDatabase.readStream(rawText); % get content of website, specified by connection
       catch err
         error('AnimalDatabase:readFromDatabase', 'Invalid %s sheet ID "%s"%s.', where, sheet, who);
       end
@@ -5248,7 +5248,150 @@ classdef AnimalDatabase < handle
       obj.writeDatabaseRow(animal, template, dataRow+1, database, gid, where, researcher.Name);
       animal.owner      = researcherID;
       obj.Researchers(iResearcher).animals(dataRow) = animal;
+      
+       %% insert the data into datajoint database
+        
+       % insert subject info
+        key_subj = struct(...
+           'user_id', animal.owner, ...
+           'subject_id', animal.ID);
+       
+        subj = key_subj;
+       
+        if isempty(fetch(subject.Subject & key_subj))
+            exists = 0;
+        else 
+            exists = 1;
+        end
+        
+        if ~isempty(animal.sex)
+            if exists
+                update(subject.Subject & key_subj, 'sex', animal.sex.char)
+            else
+                subj.sex = animal.sex.char;
+            end
+        end
+        
+        if ~isempty(animal.dob)
+            dob = sprintf('%d-%02d-%02d', animal.dob(1), animal.dob(2), animal.dob(3));
+            if exists
+                update(subject.Subject & key_subj, 'dob', dob)
+            else
+                subj.dob = dob;
+            end
+        end
 
+        if ~isempty(animal.image)
+            if exists
+                update(subject.Subject & key_subj, 'head_plate_mark', animal.image)
+            else
+                subj.head_plate_mark = animal.image;
+            end
+        end
+
+        if ~isempty(animal.whereAmI)
+            if exists
+                update(subject.Subject & key_subj, 'location', animal.whereAmI)
+            else
+                subj.location = animal.whereAmI;
+            end
+        end
+
+        if ~isempty(animal.protocol)
+            if exists
+                update(subject.Subject & key_subj, 'protocol', animal.protocol)
+            else
+                subj.protocol = animal.protocol;
+            end
+        end
+
+        if ~isempty(animal.initWeight)
+            if exists
+                update(subject.Subject & key_subj, 'initial_weight', animal.initWeight)
+            else
+                subj.initial_weight = animal.initWeight;
+            end
+        end
+
+        if ~isempty(animal.genotype)
+            if exists
+                update(subject.Subject & key_subj, 'line', animal.genotype)
+            else
+                subj.line = animal.genotype;
+            end
+        else
+            subj.line = 'Unknown';
+        end
+        
+        if ~exists
+            insert(subject.Subject, subj)
+        end
+        
+        % insert act item
+        if ~isempty(animal.actItems)
+            for i = 1:length(animal.actItems)
+                subj_act_item = key_subj;
+                subj_act_item.act_item = animal.actItems{i};
+                if isempty(fetch(subject.SubjectActItem & subj_act_item))
+                    insert(subject.SubjectActItem, subj_act_item)
+                end
+            end
+        end
+        
+        % insert cage info
+        key_cage.cage = animal.cage;
+        cage = key_cage;
+        cage.cage_owner = animal.owner;
+        
+        if isempty(fetch(subject.Cage & key_cage))
+            insert(subject.Cage, cage)
+        else 
+            update(subject.Cage & key_cage, 'cage_owner', animal.owner)
+        end
+        
+        % insert caging status
+        caging_status = key_subj;
+        caging_status.cage = animal.cage;
+        if isempty(fetch(subject.CagingStatus & key_subj))
+            insert(subject.CagingStatus, caging_status)
+        else
+            update(subject.CagingStatus & key_subj, 'cage', animal.cage)
+        end
+        
+        % insert subject status
+        if ~isempty(animal.status)
+            key_subj_status = key_subj;
+            for i = 1:length(animal.status)
+                effective = animal.effective{i};
+                key_subj_status.effective_date = sprintf(...
+                    '%d-%02d-%02d', effective(1), effective(2), effective(3));
+                subj_status = key_subj_status;
+                subj_status.subject_status = animal.status{i}.char;
+                
+                if strcmp(subj_status.subject_status, 'Dead')
+                    if ~isempty(fetch(subject.Death & key_subj))
+                        update(subject.Death & key_subj, 'death_date', ...
+                            key_subj_status.effective_date)
+                    else
+                        death = key_subj;
+                        death.death_date = key_subj_status.effective_date;
+                        insert(subject.Death, death)
+                    end
+                    return
+                end
+                    
+                subj_status.water_per_day = animal.waterPerDay{i};
+                subj_status.schedule = strjoin(animal.techDuties{i}.string, '/');
+                if ~isempty(fetch(action.SubjectStatus & key_subj_status))
+                    update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
+                    update(action.SubjectStatus & key_subj_status, 'water_per_day', subj_status.water_per_day)
+                    update(action.SubjectStatus & key_subj_status, 'schedule', subj_status.schedule)
+                else
+                    insert(action.SubjectStatus, subj_status)
+                end
+            end
+        end
+            
     end
     
     %----- Write logging information for *today* for a single animal; specify as pairs e.g. 'received', 1.2, 'weight', 21.4, ...
