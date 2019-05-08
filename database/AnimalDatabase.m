@@ -5538,12 +5538,13 @@ classdef AnimalDatabase < handle
       
       
       % insert water administration information
-      water_info = struct( ...
+      water_info_key = struct( ...
         'user_id', researcherID, ...
         'subject_id', animalID, ...
-        'administration_date', log_date,...
-        'watertype_name', 'Unknown'...
+        'administration_date', log_date...
         );
+      water_info = water_info_key;
+      water_info.watertype_name = 'Unknown';
       
       if ~isempty(filledLog.earned)
          water_info.earned = filledLog.earned;
@@ -5555,32 +5556,34 @@ classdef AnimalDatabase < handle
          water_info.supplement = filledLog.supplement;
       end
       
-      if isempty(fetch(action.WaterAdministration & water_info))
+      if isempty(fetch(action.WaterAdministration & water_info_key))
           insert(action.WaterAdministration, water_info)
       else
           if ~isempty(filledLog.earned)
-              update(action.WaterAdministration & water_info, 'earned', water_info.earned)
+              update(action.WaterAdministration & water_info_key, 'earned', water_info.earned)
           else
-              update(action.WaterAdministration & water_info, 'earned')
+              update(action.WaterAdministration & water_info_key, 'earned')
           end
           if ~isempty(filledLog.received)
-              update(action.WaterAdministration & water_info, 'received', water_info.received)
+              update(action.WaterAdministration & water_info_key, 'received', water_info.received)
           else
-              update(action.WaterAdministration & water_info, 'received')
+              update(action.WaterAdministration & water_info_key, 'received')
           end
           if ~isempty(filledLog.supplement)
-              update(action.WaterAdministration & water_info, 'supplement', water_info.supplement)
+              update(action.WaterAdministration & water_info_key, 'supplement', water_info.supplement)
           else
-              update(action.WaterAdministration & water_info, 'supplement')
+              update(action.WaterAdministration & water_info_key, 'supplement')
           end
       end
       
       % insert subject health status information
-      health_status = struct( ...
+      health_status_key = struct( ...
         'user_id', researcherID, ...
         'subject_id', animalID, ...
         'status_date', log_date...
         );
+    
+      health_status = health_status_key;
        
       normal = filledLog.normal.char;
       if strcmp(normal, 'Yes')
@@ -5595,22 +5598,22 @@ classdef AnimalDatabase < handle
       health_status.turgor = filledLog.turgor;
       
       if ~isempty(filledLog.comments)
-          health_status = filledLog.comments;
+          health_status.comments = filledLog.comments;
       end
       
-      if isempty(fetch(subject.HealthStatus & health_status))
+      if isempty(fetch(subject.HealthStatus & health_status_key))
           insert(subject.HealthStatus, health_status)
       else
-          update(subject.HealthStatus & health_status, 'normal_behavior', health_status.normal_behavior)
-          update(subject.HealthStatus & health_status, 'bcs', health_status.bcs)
-          update(subject.HealthStatus & health_status, 'activity', health_status.activity)
-          update(subject.HealthStatus & health_status, 'posture_grooming', health_status.posture_grooming)
-          update(subject.HealthStatus & health_status, 'eat_drink', health_status.eat_drink)
-          update(subject.HealthStatus & health_status, 'tugor', health_status.turgor)
+          update(subject.HealthStatus & health_status_key, 'normal_behavior', health_status.normal_behavior)
+          update(subject.HealthStatus & health_status_key, 'bcs', health_status.bcs)
+          update(subject.HealthStatus & health_status_key, 'activity', health_status.activity)
+          update(subject.HealthStatus & health_status_key, 'posture_grooming', health_status.posture_grooming)
+          update(subject.HealthStatus & health_status_key, 'eat_drink', health_status.eat_drink)
+          update(subject.HealthStatus & health_status_key, 'turgor', health_status.turgor)
           if ~isempty(filledLog.comments)
-              update(subject.HealthStatus & health_status, 'comments', health_status.comments)
+              update(subject.HealthStatus & health_status_key, 'comments', health_status.comments)
           else
-              update(subject.HealthStatus & health_status, 'comments')
+              update(subject.HealthStatus & health_status_key, 'comments')
           end
       end
       
@@ -5623,12 +5626,50 @@ classdef AnimalDatabase < handle
               );
           for iaction = 1:length(filledLog.actions)
               action_item.action_id = iaction;
-              if isempty(fetch(action.ActionItem & action_item))
-                  action_item.action = filledLog.actions(iaction);
+              action_item_key = action_item;
+              if isempty(fetch(action.ActionItem & action_item_key))
+                  action_item.action = filledLog.actions{iaction};
                   insert(action.ActionItem, action_item)
               end
           end
       end
+      
+      % ingest session
+        if ~isnan(filledLog.trainStart) && ~isempty(filledLog.mainMazeID) % TODO: ingest trainings without mainMazeID
+            session = struct(...
+              'user_id', researcherID, ...
+              'subject_id', animalID, ...
+              'session_date', log_date ...
+              );
+            
+            if isempty(acquisition.Session & session_date)
+                session.session_number = 1;
+            else
+                number = fetchn(acquisition.Session & session_date, 'session_number');
+                session.session_number = max(number) + 1;
+            end
+            
+            session.session_start_time = [log_date, springf(' %2d:%2d:00', ...
+                filledLog.trainStart(1), filledLog.trainStart(2))];
+            session.session_end_time = [log_date, sprintf(' %2d:%2d:00', ...
+                log.trainEnd(1), log.trainEnd(2))];
+            
+            % ingest location
+            key_location.location = filledLog.rigName;
+            inserti(lab.Location, key_location)
+
+            session.location = filledLog.rigName;
+            session.user_id = researcherID;
+            session.task = 'Towers';
+            session.level = filledLog.mainMazeID;
+            session.set_id = 1;
+            session.stimulus_bank = filledLog.stimulusBank;
+            session.stimulus_set = filledLog.stimulusSet;
+            session.ball_squal = filledLog.squal;
+            session.session_performance = filledLog.performance;
+
+            insert(acquisition.Session, session)
+        end
       
       
     end
