@@ -5327,17 +5327,7 @@ classdef AnimalDatabase < handle
             insert(subject.Subject, subj)
         end
         
-        % insert act item
-        if ~isempty(animal.actItems)
-            for i = 1:length(animal.actItems)
-                subj_act_item = key_subj;
-                subj_act_item.act_item = animal.actItems{i};
-                if isempty(fetch(subject.SubjectActItem & subj_act_item))
-                    insert(subject.SubjectActItem, subj_act_item)
-                end
-            end
-        end
-        
+       
         % insert cage info
         key_cage.cage = animal.cage;
         cage = key_cage;
@@ -5379,15 +5369,25 @@ classdef AnimalDatabase < handle
                     end
                     return
                 end
-                    
-                subj_status.water_per_day = animal.waterPerDay{i};
-                subj_status.schedule = strjoin(animal.techDuties{i}.string, '/');
-                if ~isempty(fetch(action.SubjectStatus & key_subj_status))
-                    update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
-                    update(action.SubjectStatus & key_subj_status, 'water_per_day', subj_status.water_per_day)
-                    update(action.SubjectStatus & key_subj_status, 'schedule', subj_status.schedule)
+                
+                if ismember(subj_status.subject_status, {'Missing', 'Unknown'})
+                    if ~isempty(fetch(action.SubjectStatus & key_subj_status))
+                        insert(action.SubjectStatus, subj_status)
+                    else
+                        update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
+                        update(action.SubjectStatus & key_subj_status, 'water_per_day')
+                        update(action.SubjectStatus & key_subj_status, 'schedule')
+                    end
                 else
-                    insert(action.SubjectStatus, subj_status)
+                    subj_status.water_per_day = animal.waterPerDay{i};
+                    subj_status.schedule = strjoin(animal.techDuties{i}.string, '/');
+                    if ~isempty(fetch(action.SubjectStatus & key_subj_status))
+                        update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
+                        update(action.SubjectStatus & key_subj_status, 'water_per_day', subj_status.water_per_day)
+                        update(action.SubjectStatus & key_subj_status, 'schedule', subj_status.schedule)
+                    else
+                        insert(action.SubjectStatus, subj_status)
+                    end
                 end
             end
         end
@@ -5500,7 +5500,6 @@ classdef AnimalDatabase < handle
       end
       summary           = cell2struct(summary, {obj.tmplRightNow.data}, 2);
 %       summary.date      = AnimalDatabase.datenum2date(datevec(thisDate));
-      
       % Special case for weight -- always ensure a valid value from the last known weighing
       if isempty(summary.weight)
         iAvailable      = find(~cellfun(@isempty, {logs.weight}), 1, 'last');
@@ -5512,6 +5511,125 @@ classdef AnimalDatabase < handle
       end
 
       [animal,researcher] = obj.pushAnimalInfo(researcherID, animalID, 'rightNow', summary);
+      
+      % insert weighing information
+      log_date = sprintf('%d-%02d-%02d', filledLog.date(1), filledLog.date(2), filledLog.date(3));
+      if ~isempty(filledLog.weight)
+        weighing = struct( ...
+            'user_id', researcherID, ...
+            'subject_id', animalID, ...
+            'weighing_time', datestr(now, 'yyyy-mm-dd HH:MM:ss'), ...
+            'weight', filledLog.weight ...
+            );
+        
+        if ~isempty(filledLog.weighLocation)
+            loc.location = filledLog.weighLocation;
+            inserti(lab.Location, loc)
+            weighing.location = loc.location;
+        end
+        
+        if ~isempty(filledLog.weighPerson)
+            user.user_id = filledLog.weighPerson;
+            inserti(lab.User, user)
+            weighing.weigh_person = user.user_id;
+        end
+        insert(action.Weighing, weighing)
+      end
+      
+      
+      % insert water administration information
+      water_info = struct( ...
+        'user_id', researcherID, ...
+        'subject_id', animalID, ...
+        'administration_date', log_date,...
+        'watertype_name', 'Unknown'...
+        );
+      
+      if ~isempty(filledLog.earned)
+         water_info.earned = filledLog.earned;
+      end
+      if ~isempty(filledLog.received)
+         water_info.received = filledLog.received;
+      end
+      if ~isempty(filledLog.supplement)
+         water_info.supplement = filledLog.supplement;
+      end
+      
+      if isempty(fetch(action.WaterAdministration & water_info))
+          insert(action.WaterAdministration, water_info)
+      else
+          if ~isempty(filledLog.earned)
+              update(action.WaterAdministration & water_info, 'earned', water_info.earned)
+          else
+              update(action.WaterAdministration & water_info, 'earned')
+          end
+          if ~isempty(filledLog.received)
+              update(action.WaterAdministration & water_info, 'received', water_info.received)
+          else
+              update(action.WaterAdministration & water_info, 'received')
+          end
+          if ~isempty(filledLog.supplement)
+              update(action.WaterAdministration & water_info, 'supplement', water_info.supplement)
+          else
+              update(action.WaterAdministration & water_info, 'supplement')
+          end
+      end
+      
+      % insert subject health status information
+      health_status = struct( ...
+        'user_id', researcherID, ...
+        'subject_id', animalID, ...
+        'status_date', log_date...
+        );
+       
+      normal = filledLog.normal.char;
+      if strcmp(normal, 'Yes')
+          health_status.normal_behavior = 1;
+      else
+          health_status.normal_behavior = 0;
+      end
+      health_status.bcs = filledLog.bcs;
+      health_status.activity = filledLog.activity;
+      health_status.posture_grooming = filledLog.posture;
+      health_status.eat_drink = filledLog.eatDrink;
+      health_status.turgor = filledLog.turgor;
+      
+      if ~isempty(filledLog.comments)
+          health_status = filledLog.comments;
+      end
+      
+      if isempty(fetch(subject.HealthStatus & health_status))
+          insert(subject.HealthStatus, health_status)
+      else
+          update(subject.HealthStatus & health_status, 'normal_behavior', health_status.normal_behavior)
+          update(subject.HealthStatus & health_status, 'bcs', health_status.bcs)
+          update(subject.HealthStatus & health_status, 'activity', health_status.activity)
+          update(subject.HealthStatus & health_status, 'posture_grooming', health_status.posture_grooming)
+          update(subject.HealthStatus & health_status, 'eat_drink', health_status.eat_drink)
+          update(subject.HealthStatus & health_status, 'tugor', health_status.turgor)
+          if ~isempty(filledLog.comments)
+              update(subject.HealthStatus & health_status, 'comments', health_status.comments)
+          else
+              update(subject.HealthStatus & health_status, 'comments')
+          end
+      end
+      
+      % insert action item
+      if ~isempty(filledLog.actions)
+          action_item = struct(...
+              'user_id', researcherID, ...
+              'subject_id', animalID, ...
+              'action_date', log_date ...
+              );
+          for iaction = 1:length(filledLog.actions)
+              action_item.action_id = iaction;
+              if isempty(fetch(action.ActionItem & action_item))
+                  action_item.action = filledLog.actions(iaction);
+                  insert(action.ActionItem, action_item)
+              end
+          end
+      end
+      
       
     end
     
