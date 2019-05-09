@@ -5391,6 +5391,17 @@ classdef AnimalDatabase < handle
                 end
             end
         end
+        
+        % insert subject actItem
+        if ~isempty(animal.actItems)
+            for i = 1:length(animal.actItems)
+                subj_act_item = key_subj;
+                subj_act_item.act_item = animal.actItems{i};
+                if isempty(fetch(subject.SubjectActItem & subj_act_item))
+                    insert(subject.SubjectActItem, subj_act_item)
+                end
+            end
+        end
             
     end
     
