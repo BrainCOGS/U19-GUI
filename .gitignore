@@ -5,4 +5,6 @@
 *.png
 *.eps
 *.fig
+*.wav
+*.tdf
 .DS_Store
