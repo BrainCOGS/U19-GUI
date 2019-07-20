@@ -5734,6 +5734,8 @@ classdef AnimalDatabase < handle
         personID      = [];
       end
       
+      dj.conn()
+      
       %% Layout the GUI display
       obj.layoutGUI();
       obj.layoutResponsibles(personID);
