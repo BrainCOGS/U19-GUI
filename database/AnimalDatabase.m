@@ -5734,7 +5734,7 @@ classdef AnimalDatabase < handle
         personID      = [];
       end
       
-      dj.conn()
+      dj.conn('datajoint00.pni.princeton.edu', '', '', '', '', true)
       
       %% Layout the GUI display
       obj.layoutGUI();
