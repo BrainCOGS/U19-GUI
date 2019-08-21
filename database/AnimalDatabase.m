@@ -95,6 +95,8 @@ classdef AnimalDatabase < handle
   properties (Constant)
     CLIENT_ID             = getfield(load('database_config.mat'), 'client_id')
     CLIENT_SECRET         = getfield(load('database_config.mat'), 'client_secret')
+    DATAJOINT_STATUS      = dj.conn('datajoint00.pni.princeton.edu', '', '', '', '', true)
+
     GOOGLE_URL            = 'https://www.google.com'
     GOOGLESHEETS_URL      = 'https://docs.google.com/spreadsheets/d'
     EDIT_FORMAT           = '%s/%s/edit#gid=%s'
@@ -5733,9 +5735,7 @@ classdef AnimalDatabase < handle
       if nargin < 2
         personID      = [];
       end
-      
-      dj.conn('datajoint00.pni.princeton.edu', '', '', '', '', true)
-      
+            
       %% Layout the GUI display
       obj.layoutGUI();
       obj.layoutResponsibles(personID);
