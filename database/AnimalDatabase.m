@@ -5399,9 +5399,13 @@ classdef AnimalDatabase < handle
         if ~isempty(animal.actItems)
             for i = 1:length(animal.actItems)
                 subj_act_item = key_subj;
-                subj_act_item.act_item = animal.actItems{i};
-                if isempty(fetch(subject.SubjectActItem & subj_act_item))
-                    insert(subject.SubjectActItem, subj_act_item)
+                subj_act_item.action_date = sprintf(...
+                    '%d-%02d-%02d', effective(1), effective(2), effective(3));
+                actions_done_today = fetch(action.ActionItem & subj_act_item);
+                subj_act_item.action_id = i + numel(actions_done_today); %If already exists for the day, count up.
+                subj_act_item.action = animal.actItems{i};
+                if isempty(fetch(action.ActionItem & subj_act_item))
+                    insert(action.ActionItem, subj_act_item)
                 end
             end
         end
@@ -5533,7 +5537,8 @@ classdef AnimalDatabase < handle
             'user_id', researcherID, ...
             'subject_id', animalID, ...
             'weighing_time', datestr(now, 'yyyy-mm-dd HH:MM:ss'), ...
-            'weight', filledLog.weight ...
+            'weight', filledLog.weight, ...
+            'weight_notice', filledLog.comments ...
             );
         
         if ~isempty(filledLog.weighLocation)
@@ -5642,7 +5647,12 @@ classdef AnimalDatabase < handle
               action_item.action_id = iaction;
               action_item_key = action_item;
               if isempty(fetch(action.ActionItem & action_item_key))
-                  action_item.action = filledLog.actions{iaction};
+                  if ischar(filledLog.actions{iaction})
+                      action_string = filledLog.actions{iaction};
+                  else
+                      action_string = char(filledLog.actions{iaction}.string);
+                  end
+                  action_item.action = action_string;
                   insert(action.ActionItem, action_item)
               end
           end
