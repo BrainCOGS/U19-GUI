@@ -113,6 +113,7 @@ classdef AnimalDatabase < handle
     DATE_FORMAT           = '%d/%d/%d'
     DATE_DISPLAY          = 'dd mmm yyyy, HH:MM:SS pm'
     DAYS_OF_WEEK          = {'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'}     % N.B. must match weekday() order
+    DAYS_OF_WEEK_FULL     = {'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'};
 
     
     ALLOW_RECORDS_LAPSE   = true
@@ -4430,7 +4431,7 @@ classdef AnimalDatabase < handle
         
       else
         %% Data is given as a sscanf() format specifier
-        str       = sprintf(format{2}, input);
+        str       = sprintf(format{2}, char(input));
         if ~isnumeric(input)
           number  = [];
         end
@@ -5041,6 +5042,70 @@ classdef AnimalDatabase < handle
         %% Store templates for future use
         obj.(['tmpl' field{:}])   = tmpl;
       end
+    
+      
+      
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %                             And now the same in Datajoint
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+    %First the duty Roaster
+    DutyRoaster = struct();
+    for days_idx = 1:length(obj.DAYS_OF_WEEK)
+        DutyRoaster(days_idx).Day = obj.DAYS_OF_WEEK{days_idx};
+        DutyRoaster(days_idx).Technician = fetchn(lab.DutyRoaster, [obj.DAYS_OF_WEEK_FULL{days_idx}, '_duty'] );
+    end
+    overview_dj.DutyRoster = DutyRoaster;
+    
+    %Then the Technicians
+    query = lab.User() & 'primary_tech != "N/A"';
+    Technicians =  struct('Name', query.fetchn('full_name'),        ...
+                            'ID', query.fetchn('user_id'),         ...
+                      'Presence', query.fetchn('presence'),         ...
+                 'DayCutoffTime', query.fetchn('day_cutoff_time'),  ...
+                         'Phone', query.fetchn('phone'),            ...
+                       'Carrier', query.fetchn('carrier'),          ...
+                         'Email', query.fetchn('email'),            ...
+                         'Slack', query.fetchn('slack'),            ...
+                    'ContactVia', query.fetchn('contact_via'),      ...
+                  'slackWebhook', query.fetchn('slack_webhook'),    ...
+                   'primaryTech', query.fetchn('primary_tech'));
+     overview_dj.Technicians =  Technicians';
+     
+     %Then the Researchers
+     query = lab.User() & 'primary_tech = "N/A"';
+     Researchers =  struct('Name', query.fetchn('full_name'),                   ...
+                            'ID', query.fetchn('user_id'),                      ...
+                      'Presence', query.fetchn('presence'),                     ...
+                 'DayCutoffTime', query.fetchn('day_cutoff_time'),              ...
+                         'Phone', query.fetchn('phone'),                        ...
+                       'Carrier', query.fetchn('carrier'),                      ...
+                         'Email', query.fetchn('email'),                        ...
+                         'Slack', query.fetchn('slack'),                        ...
+                    'ContactVia', query.fetchn('contact_via'),                  ...
+            'TechResponsibility', query.fetchn('tech_responsibility'),          ...
+                      'Protocol', fetchn(lab.UserProtocol & query, 'protocol'), ...
+                   'wateringLog', query.fetchn('watering_logs'),                ...
+                  'slackWebhook', query.fetchn('slack_webhook'));
+      user_ids = query.fetchn('user_id');
+      for l_idx = 1:length(user_ids) 
+        user_lab = fetch( lab.UserLab & ['user_id = "' user_ids{l_idx} '"'], 'lab');
+        Researchers(l_idx).PI = fetchn(lab.Lab() & ['lab = "' user_lab.lab '"'], 'pi_name');
+        Researchers(l_idx).SecondaryContact = fetchn(lab.UserSecondaryContact & ['user_id = "' user_ids{l_idx} '"'], 'secondary_contact');
+      end
+      overview_dj.Researchers = Researchers';
+      
+      % Then the NotificationSettings; take only the most up-to-date entry
+      all_dates = fetchn(lab.NotificationSettings, 'notification_settings_date');
+      query = lab.NotificationSettings & ['notification_settings_date = "' all_dates{end} '"'];
+      NotificationSettings.MaxResponseTime  = query.fetchn('max_response_time');
+      NotificationSettings.ChangeCutoffTime = cell2mat(query.fetchn('change_cutoff_time'));
+      NotificationSettings.WeeklyDigestDay  = char(query.fetchn('weekly_digest_day'));
+      NotificationSettings.WeeklyDigestTime = cell2mat(query.fetchn('weekly_digest_time'));
+      overview_dj.NotificationSettings = NotificationSettings;
+      
+      overview = overview_dj;      
+      disp('pullOverview executed - with datajoint backend.');
     end
     
     %----- Read mouse listing given a researcher (can be multiple, by default all)
@@ -5081,6 +5146,109 @@ classdef AnimalDatabase < handle
             if ~isempty(iOrder)
               animals{iID}= animals{iID}(iOrder);
             end
+            
+            % In dj, subject and cages can just be listed
+            subjects = subject.Subject() & ['user_id = "', researcher.ID, '"'];
+            [subject_id, identifying_image, where_am_I, protocol, sex, dob, genotype, initial_weight ] = subjects.fetchn('subject_id','head_plate_mark', 'location', 'protocol', 'sex', 'dob', 'line', 'initial_weight');
+            animals_dj =  struct('ID',   subject_id,            ...
+                                        'image', identifying_image,   ...
+                                        'whereAmI', where_am_I,       ...
+                                        'protocol', protocol,         ...
+                                        'genotype', genotype,         ...
+                                        'initWeight', num2cell(initial_weight));
+          
+            for subj_idx = 1:length(subject_id)
+                subj = subject_id{subj_idx};
+                animals_dj(subj_idx).sex =  Sex(sex{subj_idx});
+                
+                if length(dob{1}) > 0
+                    date_correctformat = datevec(dob{1})*[[1,0,0,0,0,0];[0,1,0,0,0,0];[0,0,1,0,0,0]]';
+                    animals_dj(subj_idx).dob = date_correctformat;
+                end
+                
+                cages = subject.CagingStatus & ['subject_id = "', subj, '"'];
+                cage_id = cages.fetchn('cage');
+                if length(cage_id) > 0
+                    animals_dj(subj_idx).cage = char(cage_id);
+                else
+                    animals_dj(subj_idx).cage = [];
+                end
+
+                this_subject = action.SubjectStatus & ['subject_id = "', subj, '"'];
+                [status, tech_duties, effective, waterperday] = this_subject.fetchn('subject_status', 'schedule' , 'effective_date', 'water_per_day');
+                
+                td = {};
+                st = {};
+                ed = {};
+                for record_idx = 1:length(effective)  % all have a starting date
+                    ed{record_idx} = obj.num2date( obj.datenum2date( datevec(effective{record_idx})));  % Transform so that Sue Ann's Code understands
+                    td{record_idx} = Responsibility(strsplit(tech_duties{record_idx},'/'));      % Translate 1,2,3 to Train/Nothing/Water etc.
+                    st{record_idx} = HandlingStatus(status{record_idx});                         % Translate InExperiments, AdLibWater to 1,2,3 etc.
+                end
+                animals_dj(subj_idx).effective = ed;
+                animals_dj(subj_idx).techDuties = td;
+                animals_dj(subj_idx).status = st;
+                animals_dj(subj_idx).waterPerDay = reshape( num2cell(waterperday), [1, length(waterperday)]);  
+
+            
+                % THE REST ONLY CONCERNS THE LAST RECORD - MORE DETAILS IN LOGS! 
+                rightNow = struct();
+
+                query = (action.Weighing & this_subject);
+                [weighing_time, weight] = query.fetchn('weighing_time','weight');
+                if length(weighing_time) > 0
+                    dv = datevec(weighing_time{end});
+                    rightNow.date = obj.datenum2date(dv(1:3));
+                    rightNow.weight = weight(end);
+                    selector = sprintf('administration_date = "%4d-%1d-%2d"', obj.num2date(rightNow.date));
+                    query =  action.WaterAdministration() & ['subject_id = "', subj, '"'] & selector;
+                    if length(query.fetchn('earned')) > 0
+                        rightNow.earned = query.fetchn('earned');
+                        rightNow.supplement = query.fetchn('supplement');
+                        rightNow.received = query.fetchn('received');
+                    else
+                        rightNow.earned = 0;
+                        rightNow.supplement = 0;
+                        rightNow.received = 0;
+                    end
+                    selector = sprintf('session_date = "%4d-%1d-%2d"', obj.num2date(rightNow.date));
+                    query =  acquisition.Session() & ['subject_id = "', subj, '"'] & selector;
+                    if length(query.fetchn('session_start_time'))>0
+                        rightNow.trainStart = query.fetchn('session_start_time');
+                        rightNow.trainEnd = query.fetchn('session_end_time');
+                        rightNow.performance = query.fetchn('session_performance');
+                        rightNow.mainMazeID = query.fetchn('level');
+                    else
+                        rightNow.trainStart = NaN;
+                        rightNow.trainEnd = NaN;
+                        rightNow.performance = NaN;
+                        rightNow.mainMazeID = NaN;
+                    end
+                else
+                    rightNow.date = NaN;
+                    rightNow.weight = NaN;
+                    rightNow.earned = NaN;
+                    rightNow.supplement = NaN;
+                    rightNow.received = 0;
+                    rightNow.trainStart = NaN;
+                    rightNow.trainEnd = NaN;
+                    rightNow.performance = NaN;
+                    rightNow.mainMazeID = NaN;
+                end
+                animals_dj(subj_idx).rightNow = rightNow;
+                
+                selector = sprintf('action_date = "%4d-%1d-%2d"', obj.num2date(rightNow.date));
+                actionItems = action.ActionItem & ['subject_id = "', subj, '"'] & selector;
+                if length(actionItems.fetchn('action')) > 0
+                    animals_dj(subj_idx).actItems = actionItems.fetchn('action')';
+                else
+                    animals_dj(subj_idx).actItems = [];
+                end
+            end
+           
+            animals{iID} = animals_dj';
+            disp('pullAnimalList executed - with datajoint backend.');
+           
           end
         end
         
@@ -5147,6 +5315,7 @@ classdef AnimalDatabase < handle
       
       %% Loop through animals
       logs                = cell(size(animalID));
+      logs_dj             = cell(size(animalID));
       animals             = cell(size(animalID));
       sheetID             = cell(size(animalID));
       for iAni = 1:numel(animalID)
@@ -5170,7 +5339,124 @@ classdef AnimalDatabase < handle
         else
           logs{iAni}      = obj.parseFromDatabase(template, dataRow, data, sheetID{iAni}, where, researcher.Name);
         end
+          
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %                             And now the same in Datajoint
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+        query = action.WaterAdministration() & ['subject_id = "', animalID{iAni}, '"'];
+        
+        %Get the SQL dates in a form that SueAnns Code can understand
+        dates = fetchn(query, 'administration_date');
+        foo = @(st) datevec(st)*[[1,0,0,0,0,0];[0,1,0,0,0,0];[0,0,1,0,0,0]]';
+        dates_sa = cellfun(foo, dates, 'UniformOutput', false);
+
+        dj_tmp = struct('date', dates_sa,  ...
+                      'earned', num2cell(fetchn(query, 'earned')),               ...
+                  'supplement', num2cell(fetchn(query, 'supplement')),           ...
+                    'received', num2cell(fetchn(query, 'received')));
+        
+        for log_idx = 1:length(dj_tmp)
+            
+            query = action.Weighing & ['subject_id = "', animalID{iAni}, '" AND CAST(WEIGHING_TIME AS DATE) = "' dates{log_idx} '"' ];
+            if length(query.fetch('*')) > 0
+                [dj_tmp(log_idx).weight, dj_tmp(log_idx).weighPerson, dj_tmp(log_idx).weighTime, dj_tmp(log_idx).weighLocation, dj_tmp(log_idx).comments] =  ...
+                fetchn(query, 'weight', 'weigh_person','weighing_time','location','weight_notice');
+                % To transform the full weigh time into HH-MM in vector
+                dj_tmp(log_idx).weighTime = datevec(dj_tmp(log_idx).weighTime)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';
+            else
+                dj_tmp(log_idx).weight        = [];
+                dj_tmp(log_idx).weighPerson   = [];
+                dj_tmp(log_idx).weighTime     = [];
+                dj_tmp(log_idx).weighLocation = [];
+                dj_tmp(log_idx).comments      = [];
+            end
+            
+            query = subject.HealthStatus & ['subject_id = "', animalID{iAni}, '" AND STATUS_DATE = "' dates{log_idx} '"' ];
+            if length(query.fetch('*')) > 0
+                [normal_data, dj_tmp(log_idx).bcs, dj_tmp(log_idx).activity, dj_tmp(log_idx).posture, dj_tmp(log_idx).eatDrink, dj_tmp(log_idx).turgor, dj_tmp(log_idx).healthNotice] =  ...
+                fetch1(query, 'normal_behavior', 'bcs','activity','posture_grooming','eat_drink', 'turgor', 'comments');
+                dj_tmp(log_idx).normal = YesNoMaybe(normal_data);
+            else
+                dj_tmp(log_idx).normal       = [];
+                dj_tmp(log_idx).bcs          = [];
+                dj_tmp(log_idx).activity     = [];   
+                dj_tmp(log_idx).posture      = [];
+                dj_tmp(log_idx).eatDrink     = [];
+                dj_tmp(log_idx).turgor       = [];
+                dj_tmp(log_idx).healthNotice = [];
+            end
+            
+            query = action.Notification & ['subject_id = "', animalID{iAni}, '" AND NOTIFICATION_DATE = "' dates{log_idx} '"' ];
+            if length(query.fetch('*')) > 0
+                [dj_tmp(log_idx).cageNotice, dj_tmp(log_idx).healthNotice, dj_tmp(log_idx).weightNotice] =  ...
+                fetch1(query, 'cage_notice','health_notice', 'weight_notice');
+            else
+                dj_tmp(log_idx).cageNotice   = [];
+                dj_tmp(log_idx).healthNotice = [];
+                dj_tmp(log_idx).weightNotice = [];
+            end
+            
+            % Rrformat the database-actions to sueanns nx2 cell arrays
+            query = action.ActionItem & ['subject_id = "', animalID{iAni}, '" AND ACTION_DATE = "' dates{log_idx} '"' ];
+            if length(query.fetch('*')) > 0
+                action_data = fetch(query, 'action_id', 'action');
+                action_tmp = cell(length(action_data),2);
+                for i=1:length(action_data)
+                    action_tmp{i,1} = action_data(i).action_id;
+                    action_tmp{i,2} = action_data(i).action;
+                end
+                dj_tmp(log_idx).actions = action_tmp;
+            else
+                dj_tmp(log_idx).actions = [];
+            end
+            
+            query = acquisition.SessionStatistics & ['subject_id = "', animalID{iAni}, '" AND SESSION_DATE = "' dates{log_idx} '"' ];
+            if length(query.fetch('*')) > 0
+                [dj_tmp(log_idx).trialType, dj_tmp(log_idx).choice, dj_tmp(log_idx).mazeID, dj_tmp(log_idx).numTowersR, dj_tmp(log_idx).numTowersL] =  ...
+                fetch1(query, 'rewarded_side', 'chosen_side','maze_id','num_towers_r','num_towers_l');
+                
+                % Database has L/R - this code has 1/2. Database has
+                % columns, this code has rows...
+                foo = @(s) strcmp(s,'R') + 1;
+                dj_tmp(log_idx).trialType = cellfun(foo, dj_tmp(log_idx).trialType)';
+                dj_tmp(log_idx).choice = cellfun(foo, dj_tmp(log_idx).choice)';
+                dj_tmp(log_idx).mazeID = dj_tmp(log_idx).mazeID';
+                dj_tmp(log_idx).numTowersR = dj_tmp(log_idx).numTowersR';
+                dj_tmp(log_idx).numTowersL = dj_tmp(log_idx).numTowersL';
+                
+                query_session = acquisition.Session & ['subject_id = "', animalID{iAni}, '" AND SESSION_DATE = "' dates{log_idx} '"' ];
+                [dj_tmp(log_idx).trainStart, dj_tmp(log_idx).trainEnd, dj_tmp(log_idx).rigName, dj_tmp(log_idx).performance, dj_tmp(log_idx).mainMazeID, dj_tmp(log_idx).versionInfo, dj_tmp(log_idx).behavProtocol, dj_tmp(log_idx).stimulusBank, dj_tmp(log_idx).stimulusSet, dj_tmp(log_idx).squal] =  ...
+                fetch1(query_session, 'session_start_time', 'session_end_time','location','session_performance','level','version_info','protocol','stimulus_bank','stimulus_set', 'ball_squal');
+           
+                dj_tmp(log_idx).trainStart = datevec(dj_tmp(log_idx).trainStart)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';
+                dj_tmp(log_idx).trainEnd = datevec(dj_tmp(log_idx).trainEnd)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';
+            else
+                dj_tmp(log_idx).trialType     = [];
+                dj_tmp(log_idx).choice        = [];
+                dj_tmp(log_idx).mazeID        = [];
+                dj_tmp(log_idx).numTowersR    = [];
+                dj_tmp(log_idx).numTowersL    = [];
+                dj_tmp(log_idx).trainStart    = []; 
+                dj_tmp(log_idx).trainEnd      = [];
+                dj_tmp(log_idx).rigName       = [];
+                dj_tmp(log_idx).performance   = [];
+                dj_tmp(log_idx).mainMazeID    = []; 
+                dj_tmp(log_idx).versionInfo   = [];
+                dj_tmp(log_idx).behavProtocol = []; 
+                dj_tmp(log_idx).stimulusBank  = []; 
+                dj_tmp(log_idx).stimulusSet   = []; 
+                dj_tmp(log_idx).squal         = [];
+            end
+        end
+            
+        logs_dj{iAni} = dj_tmp';
+        
       end
+      
+      logs = logs_dj;
+      disp('pullDailyLogs executed - with datajoint backend')
       
       %% Convenience for return type
       if singleton
@@ -5399,13 +5685,17 @@ classdef AnimalDatabase < handle
         if ~isempty(animal.actItems)
             for i = 1:length(animal.actItems)
                 subj_act_item = key_subj;
-                subj_act_item.action_date = sprintf(...
-                    '%d-%02d-%02d', effective(1), effective(2), effective(3));
-                actions_done_today = fetch(action.ActionItem & subj_act_item);
-                subj_act_item.action_id = i + numel(actions_done_today); %If already exists for the day, count up.
-                subj_act_item.action = animal.actItems{i};
-                if isempty(fetch(action.ActionItem & subj_act_item))
-                    insert(action.ActionItem, subj_act_item)
+                action_string = animal.actItems{i};
+                if length(action_string) > 40
+                    subj_act_item.act_item = 'Weight too low';
+                elseif strfind(action_string, '[Yes]')>0
+                    subj_act_item.act_item = action_string(8:end);
+                else
+                    subj_act_item.act_item = action_string;
+                end
+                
+                if isempty(fetch(subject.SubjectActItem & subj_act_item))
+                    insert(subject.SubjectActItem, subj_act_item)
                 end
             end
         end
