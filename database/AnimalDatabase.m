@@ -228,7 +228,36 @@ classdef AnimalDatabase < handle
   methods (Static)
       
     %%% some DJ functions %%%
+    %----- From DataJoint Database, recontruct the template
+    function templates = getTemplateDJ(template_name)
+        if nargin < 1 || isempty(template_name)
+            template_name = 'all';
+        end
+        if ~strcmp(template_name, 'all')
+            temp = fetch(reference.Template & sprintf('template_name="%s"', template_name), '*');
+            templates = fetch(reference.(['Template' template_name]), '*');
+            templates = rmfield(templates, 'template_name');
+            if ismember(template_name, {'Animal', 'DailyInfo'})
+                templates = cell2struct(struct2cell(templates), temp.original_field_names);
+            end
+            templates = templates';
+            
+        else
+            temps = fetch(reference.Template, '*');
+            templates = struct();
+            for itemp = temps'
+                fields = fetch(reference.(['Template' itemp.template_name]) & itemp, '*');
+                fields = rmfield(fields, 'template_name');
+                if ismember(itemp.template_name, {'Animal', 'DailyInfo'})
+                    fields = cell2struct(struct2cell(fields), itemp.original_field_names);
+                end
+                templates.(itemp.template_name) = fields';
+            end
+        end
+        
+    end
     
+    %----- From DataJoint Database, reconstruct the vector of struct of animals for a given researcher
     function animals_dj = getAnimalsDJ(researcherID, add_imagefile)
         if nargin < 2 || isempty(add_imagefile)
             add_imagefile = true;
@@ -5103,109 +5132,109 @@ classdef AnimalDatabase < handle
     %----- Read remote information to get the list of available researchers etc.
     function [overview, templates] = pullOverview(obj)
       %% Get database structure information to lookup sheets etc.
-      database          = AnimalDatabase.DATABASE_ID;
-      where             = 'mice database';
-      obj.dbStructure   = mat2sheets(database);
-      peopleID          = AnimalDatabase.findSheetID('Responsibles', obj.dbStructure, where, '', false);
-      
-      %% Get the list of responsibles, by category
-      overview          = obj.readFromDatabase(database, peopleID, where);
-      overview          = AnimalDatabase.parseDataSpecs(overview);
-      allPeople         = {};
-      for field = fieldnames(overview)'
-        %% Parse special fields by name
-        for data = fieldnames(overview.(field{:}))'
-          if ~isempty(strfind(data{:}, 'Time'))
-            for iCol = 1:numel(overview.(field{:}))
-              overview.(field{:})(iCol).(data{:})     ...
-                        = obj.parseAsFormat(overview.(field{:})(iCol).(data{:}), AnimalDatabase.SPECS_TIME);
-            end
-          end
-        end
-        
-        %% Collect people list
-        if isfield(overview.(field{:}), 'ID')
-          allPeople     = [allPeople, {overview.(field{:}).ID}];
-        end
-        
-        %% Store for future access
-        obj.(field{:})  = overview.(field{:});
-      end
-      
-      if numel(unique(allPeople)) ~= numel(allPeople)
-        error('AnimalDatabase:people', 'One or more responsibles have the same ID. This must be fixed via Google Spreadsheets. The current list is: %s', strjoin(allPeople,', '));
-      end
-      
-      %% Parse watering log URLs, if present
-      for iID = 1:numel(obj.Researchers)
-        if isempty(obj.Researchers(iID).wateringLogs) || ~ischar(obj.Researchers(iID).wateringLogs)
-          obj.Researchers(iID).wateringLogs = '';
-          continue;
-%           error('AnimalDatabase:wateringLogs', 'wateringLogs URL is empty or invalid for researcher %s. This must be fixed via Google Spreadsheets.', obj.Researchers(iID).Name);
-        end
-        url             = regexp(obj.Researchers(iID).wateringLogs, AnimalDatabase.RGX_DOC_URL, 'tokens', 'once');
-        if isempty(url)
-          error('AnimalDatabase:wateringLogs', 'wateringLogs URL has an incorrect format for researcher %s. This must be fixed via Google Spreadsheets.', obj.Researchers(iID).Name);
-        end
-        obj.Researchers(iID).wateringLogs = url{1};
-      end
-      
-      %% Get sheet IDs and other special fields for animal lists of the corresponding researcher
-      sheetProps        = [obj.dbStructure.sheets.properties];
-      for iID = 1:numel(obj.Researchers)
-        personIndex     = find(strcmpi({sheetProps.title}, obj.Researchers(iID).Name));
-        if numel(personIndex) > 1
-          error('AnimalDatabase:pullOverview', 'Multiple information sheets found for researcher %s.', obj.Researchers(iID).Name);
-        elseif isempty(personIndex)
-          obj.Researchers(iID).animalsGID   = [];
-        else
-          obj.Researchers(iID).animalsGID   = num2str(sheetProps(personIndex).sheetId);
-        end
-        
-        obj.Researchers(iID).animals        = [];
-        obj.Researchers(iID).logStructure   = [];
-        if isnumeric(obj.Researchers(iID).Protocol)
-          obj.Researchers(iID).Protocol     = num2str(obj.Researchers(iID).Protocol);
-        end
-      end
-      
-      
-      %% Read all templates
-      templates         = obj.readFromDatabase(database, [], where, 'template');
-      templates         = AnimalDatabase.parseDataSpecs(templates);
-      for field = fieldnames(templates)'
-        tmpl            = templates.(field{:});
-        if ~isfield(tmpl, 'grouping')
-          obj.(['tmpl' field{:}]) = tmpl;
-          continue;
-        end
-
-        %% Parse special fields of templates
-        for iTmpl = 1:numel(tmpl)
-          %% Enforce grouping info format: either blank or a single character
-          if isempty(tmpl(iTmpl).grouping)
-            tmpl(iTmpl).grouping  = nan;
-          elseif ~ischar(tmpl(iTmpl).grouping) || numel(tmpl(iTmpl).grouping) > 1
-            error('AnimalDatabase:template', 'Template grouping specification must be either blank or a single character');
-          else
-            tmpl(iTmpl).grouping  = double(tmpl(iTmpl).grouping);
-          end
-          
-          %% Parse data format specifiers
-          format        = regexp(tmpl(iTmpl).data, AnimalDatabase.RGX_FIELD_FORMAT, 'tokens', 'once');
-          if isempty(format) || isempty(format{1}) || isempty(format{2})
-            error('AnimalDatabase:template', 'Invalid format specifier "%s" in %s template.', tmpl(iTmpl).data, field{:});
-          end
-          if ~isempty(format{3})
-            format{3}   = strtrim(format{3}(2:end));
-          end
-          tmpl(iTmpl).data        = format;
-        end
-        
-        %% Store templates for future use
-        obj.(['tmpl' field{:}])   = tmpl;
-      end
-    
+%       database          = AnimalDatabase.DATABASE_ID;
+%       where             = 'mice database';
+%       obj.dbStructure   = mat2sheets(database);
+%       peopleID          = AnimalDatabase.findSheetID('Responsibles', obj.dbStructure, where, '', false);
+%       
+%       %% Get the list of responsibles, by category
+%       overview          = obj.readFromDatabase(database, peopleID, where);
+%       overview          = AnimalDatabase.parseDataSpecs(overview);
+%       allPeople         = {};
+%       for field = fieldnames(overview)'
+%         %% Parse special fields by name
+%         for data = fieldnames(overview.(field{:}))'
+%           if ~isempty(strfind(data{:}, 'Time'))
+%             for iCol = 1:numel(overview.(field{:}))
+%               overview.(field{:})(iCol).(data{:})     ...
+%                         = obj.parseAsFormat(overview.(field{:})(iCol).(data{:}), AnimalDatabase.SPECS_TIME);
+%             end
+%           end
+%         end
+%         
+%         %% Collect people list
+%         if isfield(overview.(field{:}), 'ID')
+%           allPeople     = [allPeople, {overview.(field{:}).ID}];
+%         end
+%         
+%         %% Store for future access
+%         obj.(field{:})  = overview.(field{:});
+%       end
+%       
+%       if numel(unique(allPeople)) ~= numel(allPeople)
+%         error('AnimalDatabase:people', 'One or more responsibles have the same ID. This must be fixed via Google Spreadsheets. The current list is: %s', strjoin(allPeople,', '));
+%       end
+%       
+%       %% Parse watering log URLs, if present
+%       for iID = 1:numel(obj.Researchers)
+%         if isempty(obj.Researchers(iID).wateringLogs) || ~ischar(obj.Researchers(iID).wateringLogs)
+%           obj.Researchers(iID).wateringLogs = '';
+%           continue;
+% %           error('AnimalDatabase:wateringLogs', 'wateringLogs URL is empty or invalid for researcher %s. This must be fixed via Google Spreadsheets.', obj.Researchers(iID).Name);
+%         end
+%         url             = regexp(obj.Researchers(iID).wateringLogs, AnimalDatabase.RGX_DOC_URL, 'tokens', 'once');
+%         if isempty(url)
+%           error('AnimalDatabase:wateringLogs', 'wateringLogs URL has an incorrect format for researcher %s. This must be fixed via Google Spreadsheets.', obj.Researchers(iID).Name);
+%         end
+%         obj.Researchers(iID).wateringLogs = url{1};
+%       end
+%       
+%       %% Get sheet IDs and other special fields for animal lists of the corresponding researcher
+%       sheetProps        = [obj.dbStructure.sheets.properties];
+%       for iID = 1:numel(obj.Researchers)
+%         personIndex     = find(strcmpi({sheetProps.title}, obj.Researchers(iID).Name));
+%         if numel(personIndex) > 1
+%           error('AnimalDatabase:pullOverview', 'Multiple information sheets found for researcher %s.', obj.Researchers(iID).Name);
+%         elseif isempty(personIndex)
+%           obj.Researchers(iID).animalsGID   = [];
+%         else
+%           obj.Researchers(iID).animalsGID   = num2str(sheetProps(personIndex).sheetId);
+%         end
+%         
+%         obj.Researchers(iID).animals        = [];
+%         obj.Researchers(iID).logStructure   = [];
+%         if isnumeric(obj.Researchers(iID).Protocol)
+%           obj.Researchers(iID).Protocol     = num2str(obj.Researchers(iID).Protocol);
+%         end
+%       end
+%       
+%       
+%       %% Read all templates
+%       templates         = obj.readFromDatabase(database, [], where, 'template');
+%       templates         = AnimalDatabase.parseDataSpecs(templates);
+%       for field = fieldnames(templates)'
+%         tmpl            = templates.(field{:});
+%         if ~isfield(tmpl, 'grouping')
+%           obj.(['tmpl' field{:}]) = tmpl;
+%           continue;
+%         end
+% 
+%         %% Parse special fields of templates
+%         for iTmpl = 1:numel(tmpl)
+%           %% Enforce grouping info format: either blank or a single character
+%           if isempty(tmpl(iTmpl).grouping)
+%             tmpl(iTmpl).grouping  = nan;
+%           elseif ~ischar(tmpl(iTmpl).grouping) || numel(tmpl(iTmpl).grouping) > 1
+%             error('AnimalDatabase:template', 'Template grouping specification must be either blank or a single character');
+%           else
+%             tmpl(iTmpl).grouping  = double(tmpl(iTmpl).grouping);
+%           end
+%           
+%           %% Parse data format specifiers
+%           format        = regexp(tmpl(iTmpl).data, AnimalDatabase.RGX_FIELD_FORMAT, 'tokens', 'once');
+%           if isempty(format) || isempty(format{1}) || isempty(format{2})
+%             error('AnimalDatabase:template', 'Invalid format specifier "%s" in %s template.', tmpl(iTmpl).data, field{:});
+%           end
+%           if ~isempty(format{3})
+%             format{3}   = strtrim(format{3}(2:end));
+%           end
+%           tmpl(iTmpl).data        = format;
+%         end
+%         
+%         %% Store templates for future use
+%         obj.(['tmpl' field{:}])   = tmpl;
+%       end
+%     
       
       
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -5290,7 +5319,8 @@ classdef AnimalDatabase < handle
 %       database            = AnimalDatabase.DATABASE_ID;
 %       where               = 'mice database';
 %       dataRow             = 2;      % right after header
-      template            = obj.tmplAnimal;
+%       template = obj.tmplAnimal;
+      template            = obj.getTemplateDJ('Animal');
       
       %% Loop through researchers and their data sheets
       animals             = cell(size(researcherID));
@@ -5331,8 +5361,9 @@ classdef AnimalDatabase < handle
       end
   end
     
-    function [researcher, refreshed] = test(obj, researcherID)
+    function [researcher, refreshed, template] = test(obj, researcherID)
         [researcher, refreshed] = obj.pullLogsStructure(researcherID);
+        template = obj.tmplAnimal;
     end
     
     %----- Read daily log information given a single researcher and possibly multiple animals (default all)
@@ -5351,7 +5382,8 @@ classdef AnimalDatabase < handle
 %       database            = researcher.wateringLogs;
 %       where               = 'watering logs';
 %       dataRow             = 2;      % right after header
-       template            = obj.tmplDailyInfo;
+%       template            = obj.tmplDailyInfo;
+      template = obj.getTemplateDJ('DailyInfo');
 %       
 %       %% Sanity check that the requested animals exist in the databasereadfromDatabase 
 %       if ~isstruct(researcher.animals)
