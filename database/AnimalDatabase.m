@@ -1,19 +1,10 @@
-% ANIMALDATABASE  Database of researcher/animal lists, backed by Google spreadsheets.
+% ANIMALDATABASE  Database of researcher/animal lists.
 %
-% A database of responsibles and their mice are kept in Google spreadsheets, from which data can be
-% pulled/pushed using this class as an interface. The list of all people/animals are kept in the
-% spreadsheet indicated by AnimalDatabase.DATABASE_ID, so for example if you use this URL to
-% access your database:
-%     https://docs.google.com/spreadsheets/d/ABCDE/edit#gid=1296553442
-% then you should edit AnimalDatabase.m such that:
-%     DATABASE_ID = 'ABCDE'  
+% ------------------------------
+%   Interface use
+% ------------------------------
 %
-% Furthermore, the daily logs for individual mice are kept in one spreadsheet per researcher (who is
-% the primary responsible for those mice). For now when adding a researcher, one has to manually
-% create one spreadsheet and link it into the DATABASE_ID spreadsheet. See instructions in that
-% spreadsheet for how to do this.
-%
-% The rest of the interface allows for programmatic access and update of the contained data. In your
+% This interface allows for programmatic access and update of the contained data. In your
 % program you should first create an instance of the database to interact with:
 %       dbase     = AnimalDatabase();                       % keep this object around for communications
 %       dbase.gui();                                        % user interface from which one can add/view animals
@@ -29,19 +20,8 @@
 %       dbase.pushAnimalInfo('sakoay', 'k62', 'received', 1.3, 'weight', 22.5);
 %       dbase.pushDailyInfo('sakoay', 'k62', 'received', 1.3, 'weight', 22.5);
 %
-% The pull* functions do not create new sheets, e.g. will return empty results in the case of a
-% newly introduced researcher or animal. The "push*" functions will create sheets as necessary to
-% ensure that data can be written. You can also use the low-level "open*" functions which only
-% checks for and creates such sheets without pushing specific data.
+% You can also use all low-level datajoint functions.
 %
-% Remote access to Google spreadsheets can be quite slow. However because multiple machines can
-% write to the spreadsheets at about the same time, all functions that do things like create a new
-% sheet must check the current state of the database before doing so. To minimize pinging, pull* and
-% push* functions will only ask for overview-level data when neccessary. For example, if the user
-% calls pullAnimalList() with a specific user, then it is assumed that the user should already be in
-% the cached Researchers list (otherwise where did the user ID come from?). This is as opposed to
-% when pullAnimalList() is called without arguments, in which case an updated list of researchers
-% is obtained by (internally) calling pullOverview().
 %
 % ------------------------------
 %   Data format specifications
@@ -89,25 +69,34 @@
 % the database they will not be recalculated in the future. There is no mechanism for redacting logs
 % short of via the Google spreadsheet web interface.
 %
+%
+% ------------------------------
+%  Backend
+% ------------------------------
+% The backend is a relational database. Datajoint-matlab is used to
+% communicate with the relational database.
+%
+%
+%
 classdef AnimalDatabase < handle
   
   %_________________________________________________________________________________________________
   properties (Constant)
-    CLIENT_ID             = getfield(load('database_config.mat'), 'client_id')
-    CLIENT_SECRET         = getfield(load('database_config.mat'), 'client_secret')
+%     CLIENT_ID             = getfield(load('database_config.mat'), 'client_id')
+%     CLIENT_SECRET         = getfield(load('database_config.mat'), 'client_secret')
 
     DATAJOINT_STATUS      = getdjconnection();
 
-    GOOGLE_URL            = 'https://www.google.com'
-    GOOGLESHEETS_URL      = 'https://docs.google.com/spreadsheets/d'
-    EDIT_FORMAT           = '%s/%s/edit#gid=%s'
-    EXPORT_FORMAT         = '%s/%s/export?format=csv&gid=%s'
+%     GOOGLE_URL            = 'https://www.google.com'
+%     GOOGLESHEETS_URL      = 'https://docs.google.com/spreadsheets/d'
+%     EDIT_FORMAT           = '%s/%s/edit#gid=%s'
+%     EXPORT_FORMAT         = '%s/%s/export?format=csv&gid=%s'
     
-    FIRST_SHEET           = '0'
-    DATABASE_ID           = getfield(load('database_config.mat'), 'database_id')
-    UPDATE_PERIOD         = 10
-    UPDATE_PERIOD_SCALE   = 0.3
-    NUM_POLLS_SCALE       = 3
+%     FIRST_SHEET           = '0'
+%     DATABASE_ID           = getfield(load('database_config.mat'), 'database_id')
+%     UPDATE_PERIOD         = 10
+%     UPDATE_PERIOD_SCALE   = 0.3
+%     NUM_POLLS_SCALE       = 3
     
     NUMBER_FORMAT         = '%.4g'
     DATE_FORMAT           = '%d/%d/%d'
@@ -612,39 +601,39 @@ classdef AnimalDatabase < handle
     end
     
     %----- Find the ID of a sheet with the given title, given sheetData returned by mat2sheets()
-    function sheetID = findSheetID(sheetTitle, sheetData, where, who, allowEmpty)
-      if nargin < 5 || isempty(allowEmpty)
-        allowEmpty        = false;
-      end
-      if isempty(who)
-        who               = '';
-      else
-        who               = [' for ' who];
-      end
-      if ischar(sheetTitle)
-        sheetTitle        = {sheetTitle};
-        singleton         = true;
-      else
-        singleton         = false;
-      end
-
-      sheetProps          = [sheetData.sheets.properties];
-      sheetID             = cell(size(sheetTitle));
-      for iSheet = 1:numel(sheetTitle)
-        index             = find(strcmpi({sheetProps.title}, sheetTitle{iSheet}));
-        if numel(index) > 1
-          error('AnimalDatabase:findSheetID', 'Multiple information sheets in %s%s found with title "%s".', where, who, sheetTitle{iSheet});
-        elseif ~isempty(index)
-          sheetID{iSheet} = num2str(sheetProps(index).sheetId);
-        elseif ~allowEmpty
-          error('AnimalDatabase:findSheetID', 'No sheet in %s%s has title "%s".', where, who, sheetTitle{iSheet});
-        end
-      end
-
-      if singleton
-        sheetID           = sheetID{:};
-      end
-    end
+%     function sheetID = findSheetID(sheetTitle, sheetData, where, who, allowEmpty)
+%       if nargin < 5 || isempty(allowEmpty)
+%         allowEmpty        = false;
+%       end
+%       if isempty(who)
+%         who               = '';
+%       else
+%         who               = [' for ' who];
+%       end
+%       if ischar(sheetTitle)
+%         sheetTitle        = {sheetTitle};
+%         singleton         = true;
+%       else
+%         singleton         = false;
+%       end
+% 
+%       sheetProps          = [sheetData.sheets.properties];
+%       sheetID             = cell(size(sheetTitle));
+%       for iSheet = 1:numel(sheetTitle)
+%         index             = find(strcmpi({sheetProps.title}, sheetTitle{iSheet}));
+%         if numel(index) > 1
+%           error('AnimalDatabase:findSheetID', 'Multiple information sheets in %s%s found with title "%s".', where, who, sheetTitle{iSheet});
+%         elseif ~isempty(index)
+%           sheetID{iSheet} = num2str(sheetProps(index).sheetId);
+%         elseif ~allowEmpty
+%           error('AnimalDatabase:findSheetID', 'No sheet in %s%s has title "%s".', where, who, sheetTitle{iSheet});
+%         end
+%       end
+% 
+%       if singleton
+%         sheetID           = sheetID{:};
+%       end
+%     end
     
     
     %----- Minimum test for validity of name, value input pairs 
