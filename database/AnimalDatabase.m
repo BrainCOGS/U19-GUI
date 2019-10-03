@@ -5297,8 +5297,9 @@ classdef AnimalDatabase < handle
       if nargin < 2 || isempty(researcherID) || isempty(obj.tmplAnimal)       
 %         obj.pullOverview();                             % update database
 %         researcherID      = {obj.Researchers.ID};
-        % fetch all researchers from DJ database
-        researcherID = fetchn(lab.User, 'user_id');
+        % fetch all researchers from DJ database        
+        researcherID = fetchn(lab.User & '(primary_tech != "no") AND (primary_tech != "yes")', 'user_id');  % only researchers have animals.
+
       elseif ischar(researcherID)
         researcherID      = {researcherID};
         singleton         = true;
@@ -5335,7 +5336,7 @@ classdef AnimalDatabase < handle
         % In dj, subject and cages can just be listed
   
         animals{iID} = AnimalDatabase.getAnimalsDJ(researcherID{iID});
-        disp('pullAnimalList executed - with datajoint backend.');
+        disp('getAnimalsDJ executed - with datajoint backend.');
            
         
         %% Store animal's identification image for tooltips
