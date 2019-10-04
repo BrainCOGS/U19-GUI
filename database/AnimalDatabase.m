@@ -94,8 +94,8 @@ classdef AnimalDatabase < handle
     
 %     FIRST_SHEET           = '0'
 %     DATABASE_ID           = getfield(load('database_config.mat'), 'database_id')
-%     UPDATE_PERIOD         = 10
-%     UPDATE_PERIOD_SCALE   = 0.3
+    UPDATE_PERIOD         = 10  %TIME FOR AUTOUPDATE - UNIT???
+    UPDATE_PERIOD_SCALE   = 0.3
 %     NUM_POLLS_SCALE       = 3
     
     NUMBER_FORMAT         = '%.4g'
@@ -228,9 +228,27 @@ classdef AnimalDatabase < handle
             templates = rmfield(templates, 'template_name');
             if ismember(template_name, {'Animal', 'DailyInfo'})
                 templates = cell2struct(struct2cell(templates), temp.original_field_names);
+                for iTmpl = 1:numel(templates)
+                    % Enforce grouping info format: either blank or a single character
+                    if isempty(templates(iTmpl).grouping)
+                        templates(iTmpl).grouping  = nan;
+                    elseif ~ischar(templates(iTmpl).grouping) || numel(templates(iTmpl).grouping) > 1
+                        error('AnimalDatabase:template', 'Template grouping specification must be either blank or a single character');
+                    else
+                        templates(iTmpl).grouping  = double(templates(iTmpl).grouping);
+                    end
+                    % Enforce data info format: has to change from string to cell array
+                    format        = regexp(templates(iTmpl).data, AnimalDatabase.RGX_FIELD_FORMAT, 'tokens', 'once');
+                    if isempty(format) || isempty(format{1}) || isempty(format{2})
+                      error('AnimalDatabase:template', 'Invalid format specifier "%s" in %s template.', tmpl(iTmpl).data, field{:});
+                    end
+                    if ~isempty(format{3})
+                      format{3}   = strtrim(format{3}(2:end));
+                    end
+                    templates(iTmpl).data        = format;
+                end
             end
             templates = templates';
-            
         else
             temps = fetch(reference.Template, '*');
             templates = struct();
@@ -239,6 +257,26 @@ classdef AnimalDatabase < handle
                 fields = rmfield(fields, 'template_name');
                 if ismember(itemp.template_name, {'Animal', 'DailyInfo'})
                     fields = cell2struct(struct2cell(fields), itemp.original_field_names);
+                    %reformat the fields 'grouping' and 'date'
+                    for iTmpl = 1:numel(fields)
+                        % Enforce grouping info format: either blank or a single character
+                        if isempty(fields(iTmpl).grouping)
+                            fields(iTmpl).grouping  = nan;
+                        elseif ~ischar(fields(iTmpl).grouping) || numel(fields(iTmpl).grouping) > 1
+                            error('AnimalDatabase:template', 'Template grouping specification must be either blank or a single character');
+                        else
+                            fields(iTmpl).grouping  = double(fields(iTmpl).grouping);
+                        end
+                        % Enforce data info format: has to change from string to cell array
+                        format        = regexp(fields(iTmpl).data, AnimalDatabase.RGX_FIELD_FORMAT, 'tokens', 'once');
+                        if isempty(format) || isempty(format{1}) || isempty(format{2})
+                          error('AnimalDatabase:template', 'Invalid format specifier "%s" in %s template.', tmpl(iTmpl).data, field{:});
+                        end
+                        if ~isempty(format{3})
+                          format{3}   = strtrim(format{3}(2:end));
+                        end
+                        fields(iTmpl).data        = format;
+                    end  
                 end
                 templates.(itemp.template_name) = fields';
             end
@@ -274,9 +312,11 @@ classdef AnimalDatabase < handle
             subj = subject_id{subj_idx};
             animals_dj(subj_idx).sex =  Sex(sex{subj_idx});
 
-            if ~isempty(dob{1})
-                date_correctformat = datevec(dob{1})*[[1,0,0,0,0,0];[0,1,0,0,0,0];[0,0,1,0,0,0]]';
+            if ~isempty(dob{subj_idx})
+                date_correctformat = datevec(dob{subj_idx})*[[1,0,0,0,0,0];[0,1,0,0,0,0];[0,0,1,0,0,0]]';
                 animals_dj(subj_idx).dob = date_correctformat;
+            else
+                animals_dj(subj_idx).dob = [99,1,1];  %means no DOB given.
             end
 
             cages = subject.CagingStatus & ['subject_id = "', subj, '"'];
@@ -989,38 +1029,38 @@ classdef AnimalDatabase < handle
     end
     
     %----- Find a particular animal's watering log sheet, refreshing info if necessary
-    function [gid, researcher, refreshed, index] = findDailyLogsID(obj, researcher, animalID, allowRefresh, where)
-      %% Default arguments
-      if nargin < 4 || isempty(allowRefresh)
-        allowRefresh        = true;
-      end
-      if nargin < 5 || isempty(where)
-        where               = 'watering logs';
-      end
-      if ischar(researcher)
-        researcher          = obj.findResearcher(researcher);
-      end
-      
-      %% First try to find the desired sheet ID
-      gid                   = AnimalDatabase.findSheetID(animalID, researcher.logStructure, where, researcher.Name, true);
-      refreshed             = false;
-      
-      if ~allowRefresh
-        %% Accept the current results if refresh is not allowed
-        if nargout > 3
-          [~,index]         = obj.findResearcher(researcher.ID);
-        end
-      
-      elseif isempty(gid) || ~obj.testDataAccess(researcher.wateringLogs,gid)
-        %% Pull logs from remote location if not present or not accessible
-        [researcher,index]  = obj.pullLogsStructure(researcher, true);
-        refreshed           = true;
-        gid                 = AnimalDatabase.findSheetID(animalID, researcher.logStructure, where, researcher.Name, true);
-        
-      elseif nargout > 3
-        [~,index]           = obj.findResearcher(researcher.ID);
-      end
-    end
+%     function [gid, researcher, refreshed, index] = findDailyLogsID(obj, researcher, animalID, allowRefresh, where)
+%       %% Default arguments
+%       if nargin < 4 || isempty(allowRefresh)
+%         allowRefresh        = true;
+%       end
+%       if nargin < 5 || isempty(where)
+%         where               = 'watering logs';
+%       end
+%       if ischar(researcher)
+%         researcher          = obj.findResearcher(researcher);
+%       end
+%       
+%       %% First try to find the desired sheet ID
+%       gid                   = AnimalDatabase.findSheetID(animalID, researcher.logStructure, where, researcher.Name, true);
+%       refreshed             = false;
+%       
+%       if ~allowRefresh
+%         %% Accept the current results if refresh is not allowed
+%         if nargout > 3
+%           [~,index]         = obj.findResearcher(researcher.ID);
+%         end
+%       
+%       elseif isempty(gid) || ~obj.testDataAccess(researcher.wateringLogs,gid)
+%         %% Pull logs from remote location if not present or not accessible
+%         [researcher,index]  = obj.pullLogsStructure(researcher, true);
+%         refreshed           = true;
+%         gid                 = AnimalDatabase.findSheetID(animalID, researcher.logStructure, where, researcher.Name, true);
+%         
+%       elseif nargout > 3
+%         [~,index]           = obj.findResearcher(researcher.ID);
+%       end
+%     end
     
     
     %----- Create a GUI control based on a given format template
@@ -4114,235 +4154,235 @@ classdef AnimalDatabase < handle
     
     
     %----- Retrieve data from a given sheet of a Google document as a cell array of strings
-    function [data, rawText] = readFromDatabase(obj, database, sheet, where, who)
-      if nargin < 3 || isempty(sheet)
-        sheet     = AnimalDatabase.FIRST_SHEET;
-      end
-      if nargin < 4 || isempty(where)
-        where     = database;
-      end
-      if nargin < 5 || isempty(who)
-        who       = '';
-      end
-      if ~isempty(who)
-        who       = [' for ' who];
-      end
-      
-      %% Get raw data as a cell array
-      url         = sprintf( AnimalDatabase.EXPORT_FORMAT, AnimalDatabase.GOOGLESHEETS_URL, database, sheet );
-      connection  = java.net.URL([], url, obj.httpHandler).openConnection(); % Constructs an URL object
-      try
-        rawText   = connection.getInputStream();
-        rawText   = AnimalDatabase.readStream(rawText); % get content of website, specified by connection
-      catch err
-        error('AnimalDatabase:readFromDatabase', 'Invalid %s sheet ID "%s"%s.', where, sheet, who);
-      end
-      
-      if isempty(rawText)
-        data      = {};
-        return;
-      end
-      
-      %% Parse CSV into a cell array
-      data        = csv2cell(rawText);
-
-    end
+%     function [data, rawText] = readFromDatabase(obj, database, sheet, where, who)
+%       if nargin < 3 || isempty(sheet)
+%         sheet     = AnimalDatabase.FIRST_SHEET;
+%       end
+%       if nargin < 4 || isempty(where)
+%         where     = database;
+%       end
+%       if nargin < 5 || isempty(who)
+%         who       = '';
+%       end
+%       if ~isempty(who)
+%         who       = [' for ' who];
+%       end
+%       
+%       %% Get raw data as a cell array
+%       url         = sprintf( AnimalDatabase.EXPORT_FORMAT, AnimalDatabase.GOOGLESHEETS_URL, database, sheet );
+%       connection  = java.net.URL([], url, obj.httpHandler).openConnection(); % Constructs an URL object
+%       try
+%         rawText   = connection.getInputStream();
+%         rawText   = AnimalDatabase.readStream(rawText); % get content of website, specified by connection
+%       catch err
+%         error('AnimalDatabase:readFromDatabase', 'Invalid %s sheet ID "%s"%s.', where, sheet, who);
+%       end
+%       
+%       if isempty(rawText)
+%         data      = {};
+%         return;
+%       end
+%       
+%       %% Parse CSV into a cell array
+%       data        = csv2cell(rawText);
+% 
+%     end
     
     %----- Retrieve data from a given sheet of a Google document in a particular template-specified format
-    function [info, nextRow] = parseFromDatabase(obj, template, row, database, sheet, where, who)
-      if iscell(database)
-        data            = database;
-      else
-        data            = obj.readFromDatabase(database, sheet, where, who);
-      end
-      if size(data,2) < numel(template)
-        error('AnimalDatabase:parseFromDatabase', 'Too few columns (%d) in %s sheet ID "%s" for %s compared to the expected template (%d).', size(data,2), where, sheet, who, numel(template));
-      end
-      
-      %% Initialize output with the fields in the given template
-      info              = AnimalDatabase.emptyLike(template);
-      fields            = {template.identifier};
-      
-      %% Add all available rows (stop when there is a completely empty one)
-      nextRow           = row;
-      while nextRow <= size(data,1)
-        if all(cellfun(@isempty, data(nextRow,:)))
-          break;
-        end
-        
-        iData           = numel(info) + 1;
-        for iCol = 1:numel(fields)
-          info(iData).(fields{iCol})          ...
-                        = obj.parseAsFormat(data{nextRow,iCol}, template(iCol).data);
-        end
-        nextRow         = nextRow  + 1;
-      end
-    end
+%     function [info, nextRow] = parseFromDatabase(obj, template, row, database, sheet, where, who)
+%       if iscell(database)
+%         data            = database;
+%       else
+%         data            = obj.readFromDatabase(database, sheet, where, who);
+%       end
+%       if size(data,2) < numel(template)
+%         error('AnimalDatabase:parseFromDatabase', 'Too few columns (%d) in %s sheet ID "%s" for %s compared to the expected template (%d).', size(data,2), where, sheet, who, numel(template));
+%       end
+%       
+%       %% Initialize output with the fields in the given template
+%       info              = AnimalDatabase.emptyLike(template);
+%       fields            = {template.identifier};
+%       
+%       %% Add all available rows (stop when there is a completely empty one)
+%       nextRow           = row;
+%       while nextRow <= size(data,1)
+%         if all(cellfun(@isempty, data(nextRow,:)))
+%           break;
+%         end
+%         
+%         iData           = numel(info) + 1;
+%         for iCol = 1:numel(fields)
+%           info(iData).(fields{iCol})          ...
+%                         = obj.parseAsFormat(data{nextRow,iCol}, template(iCol).data);
+%         end
+%         nextRow         = nextRow  + 1;
+%       end
+%     end
     
     %----- Write a row into the database at the specified location
-    function sheetID = writeDatabaseRow(obj, data, template, row, database, sheet, where, who)
-      %% Convert data to string format
-      dataRep           = cell(1, numel(template));
-      for iField = 1:numel(template)
-        dataRep{iField} = obj.applyFormat(data.(template(iField).identifier), template(iField).data);
-      end
-      
-      %% Write at the given location
-      try
-        [~,sheetID]     = mat2sheets(database, sheet, [row,1], dataRep);
-      catch err
-        displayException(err);
-        error('AnimalDatabase:writeDatabaseRow', 'Failed to write data into %s for %s.', where, who);
-      end
-    end
+%     function sheetID = writeDatabaseRow(obj, data, template, row, database, sheet, where, who)
+%       %% Convert data to string format
+%       dataRep           = cell(1, numel(template));
+%       for iField = 1:numel(template)
+%         dataRep{iField} = obj.applyFormat(data.(template(iField).identifier), template(iField).data);
+%       end
+%       
+%       %% Write at the given location
+%       try
+%         [~,sheetID]     = mat2sheets(database, sheet, [row,1], dataRep);
+%       catch err
+%         displayException(err);
+%         error('AnimalDatabase:writeDatabaseRow', 'Failed to write data into %s for %s.', where, who);
+%       end
+%     end
     
     %----- Write a column into the database at the specified location
-    function sheetID = writeDatabaseCol(obj, data, template, col, database, sheet, where, who)
-      %% Convert data to string format
-      dataRep           = cell(numel(data), 1);
-      for iData = 1:numel(data)
-        dataRep{iData}  = obj.applyFormat(data{iData}, template.data);
-      end
-      
-      %% Write at the given location -- N.B. we assume that the first row is the header
-      try
-        [~,sheetID]     = mat2sheets(database, sheet, [2,col], dataRep);
-      catch err
-        displayException(err);
-        error('AnimalDatabase:writeDatabaseRow', 'Failed to write data into %s (researcher %s).', where, who);
-      end
-    end
+%     function sheetID = writeDatabaseCol(obj, data, template, col, database, sheet, where, who)
+%       %% Convert data to string format
+%       dataRep           = cell(numel(data), 1);
+%       for iData = 1:numel(data)
+%         dataRep{iData}  = obj.applyFormat(data{iData}, template.data);
+%       end
+%       
+%       %% Write at the given location -- N.B. we assume that the first row is the header
+%       try
+%         [~,sheetID]     = mat2sheets(database, sheet, [2,col], dataRep);
+%       catch err
+%         displayException(err);
+%         error('AnimalDatabase:writeDatabaseRow', 'Failed to write data into %s (researcher %s).', where, who);
+%       end
+%     end
     
     %----- Change the given sheet of the database to follow a new template, adding/removing columns if necessary
-    function [didSomething, cancelled] = redactDatabase(obj, template, database, sheet, where, who)
-      %% Retrieve raw data
-      didSomething      = false;
-      cancelled         = false;
-      if iscell(database)
-        data            = database;
-      else
-        data            = obj.readFromDatabase(database, sheet, where, who);
-      end
-      if isempty(data)
-        return;
-      end
-      
-      %% Try to match each column by header (1st row) to the template
-      header            = strtrim(data(1,:));
-      tmplField         = strtrim({template.field});
-      [inTmpl,tmplIndex]= ismember( lower(header), lower(tmplField) );
-      
-      %% Verify with user in case any columns with data need to be deleted
-      hasData           = ~cellfun(@isempty, strtrim(data(2:end,~inTmpl)));
-      if any(hasData(:))
-        notThere        = strcat({'        '}, header(~inTmpl));
-        proceed         = questdlg( { 'Data has column(s) not present in the target template:', notThere{:}                     ...
-                                    , sprintf('This will delete %d cell(s) with data in %s for %s.',sum(hasData(:)),where,who)  ...
-                                    , 'Continue?'                                       ...
-                                    }                                                   ...
-                                  , sprintf('Redacting %s for %s',where,who)            ...
-                                  , 'Yes', 'No', 'Cancel', 'No'                         ...
-                                  );
-        if strcmp(proceed, 'No')
-          return;
-        end
-        if strcmp(proceed, 'Cancel')
-          cancelled     = true;
-          return;
-        end
-      end
-      
-      %% Make a new data array that spans the columns of both the original and the template
-      redacted          = repmat({''}, size(data,1), max(size(data,2),numel(template)));
-      redacted(:,tmplIndex(inTmpl))   = data(:,inTmpl);
-      redacted(1,1:numel(tmplField))  = tmplField;
-      if isequal(strtrim(data), strtrim(redacted))
-        return;
-      end
-
-      %% Overwrite the entire sheet
-      try
-        mat2sheets(database, sheet, [1,1], redacted);
-      catch err
-        displayException(err);
-        error('AnimalDatabase:redactDatabase', 'Failed to write data into %s for %s.', where, who);
-      end
-      didSomething      = true;
-    end    
+%     function [didSomething, cancelled] = redactDatabase(obj, template, database, sheet, where, who)
+%       %% Retrieve raw data
+%       didSomething      = false;
+%       cancelled         = false;
+%       if iscell(database)
+%         data            = database;
+%       else
+%         data            = obj.readFromDatabase(database, sheet, where, who);
+%       end
+%       if isempty(data)
+%         return;
+%       end
+%       
+%       %% Try to match each column by header (1st row) to the template
+%       header            = strtrim(data(1,:));
+%       tmplField         = strtrim({template.field});
+%       [inTmpl,tmplIndex]= ismember( lower(header), lower(tmplField) );
+%       
+%       %% Verify with user in case any columns with data need to be deleted
+%       hasData           = ~cellfun(@isempty, strtrim(data(2:end,~inTmpl)));
+%       if any(hasData(:))
+%         notThere        = strcat({'        '}, header(~inTmpl));
+%         proceed         = questdlg( { 'Data has column(s) not present in the target template:', notThere{:}                     ...
+%                                     , sprintf('This will delete %d cell(s) with data in %s for %s.',sum(hasData(:)),where,who)  ...
+%                                     , 'Continue?'                                       ...
+%                                     }                                                   ...
+%                                   , sprintf('Redacting %s for %s',where,who)            ...
+%                                   , 'Yes', 'No', 'Cancel', 'No'                         ...
+%                                   );
+%         if strcmp(proceed, 'No')
+%           return;
+%         end
+%         if strcmp(proceed, 'Cancel')
+%           cancelled     = true;
+%           return;
+%         end
+%       end
+%       
+%       %% Make a new data array that spans the columns of both the original and the template
+%       redacted          = repmat({''}, size(data,1), max(size(data,2),numel(template)));
+%       redacted(:,tmplIndex(inTmpl))   = data(:,inTmpl);
+%       redacted(1,1:numel(tmplField))  = tmplField;
+%       if isequal(strtrim(data), strtrim(redacted))
+%         return;
+%       end
+% 
+%       %% Overwrite the entire sheet
+%       try
+%         mat2sheets(database, sheet, [1,1], redacted);
+%       catch err
+%         displayException(err);
+%         error('AnimalDatabase:redactDatabase', 'Failed to write data into %s for %s.', where, who);
+%       end
+%       didSomething      = true;
+%     end    
     
     
     %----- Change all existing animal listing sheets to match the current template, prompting the user if data needs to be modified
-    function numChanged = redactAnimalLists(obj)
-      %% Setup data source
-      database        = AnimalDatabase.DATABASE_ID;
-      where           = 'animal lists';
-      numChanged      = 0;
-      
-      %% Always get the current template and database structure
-      obj.pullOverview();
-      for iID = 1:numel(obj.Researchers)
-        fprintf(' ***  %15s : ', obj.Researchers(iID).ID);
-        if isempty(obj.Researchers(iID).animalsGID)
-          fprintf('(no animals)\n');
-          continue;
-        end
-        
-        [didSomething, cancelled]     ...
-                      = obj.redactDatabase(obj.tmplAnimal, database, obj.Researchers(iID).animalsGID, where, obj.Researchers(iID).ID);
-        if cancelled
-          fprintf('CANCELLED by user.\n');
-          return;
-        end
-        
-        numChanged    = numChanged + didSomething;
-        if didSomething
-          fprintf('modified\n');
-        else
-          fprintf('no change\n');
-        end
-      end
-    end
+%     function numChanged = redactAnimalLists(obj)
+%       %% Setup data source
+%       database        = AnimalDatabase.DATABASE_ID;
+%       where           = 'animal lists';
+%       numChanged      = 0;
+%       
+%       %% Always get the current template and database structure
+%       obj.pullOverview();
+%       for iID = 1:numel(obj.Researchers)
+%         fprintf(' ***  %15s : ', obj.Researchers(iID).ID);
+%         if isempty(obj.Researchers(iID).animalsGID)
+%           fprintf('(no animals)\n');
+%           continue;
+%         end
+%         
+%         [didSomething, cancelled]     ...
+%                       = obj.redactDatabase(obj.tmplAnimal, database, obj.Researchers(iID).animalsGID, where, obj.Researchers(iID).ID);
+%         if cancelled
+%           fprintf('CANCELLED by user.\n');
+%           return;
+%         end
+%         
+%         numChanged    = numChanged + didSomething;
+%         if didSomething
+%           fprintf('modified\n');
+%         else
+%           fprintf('no change\n');
+%         end
+%       end
+%     end
     
     %----- Change all existing animal daily logs to match the current template, prompting the user if data needs to be modified
-    function numChanged = redactDailyLogs(obj)
-      %% Always get the current animal lists and database structure
-      [animals,researchers] = obj.pullAnimalList();
-      numChanged            = 0;
-      for iID = 1:numel(researchers)
-        fprintf(' ***  %-15s', researchers(iID).ID);
-        if isempty(animals{iID}) || isempty(researchers(iID).wateringLogs)
-          fprintf('  (no animals/logs)\n');
-          continue;
-        end
-        fprintf('\n');
-        
-        %% Setup data source
-        database            = researchers(iID).wateringLogs;
-        researcher          = obj.pullLogsStructure(researchers(iID).ID);
-        sheetProps          = [researcher.logStructure.sheets.properties];
-        where               = sprintf('daily logs (researcher %s)', researchers(iID).ID);
-        
-        %% Redact watering sheet only for the listed animals
-        aniSheets           = sheetProps( ismember(lower({sheetProps.title}), lower({animals{iID}.ID})) );
-        for iAni = 1:numel(aniSheets)
-          fprintf('  |   %20s : ', aniSheets(iAni).title);
-          drawnow;
-          [didSomething, cancelled]     ...
-                            = obj.redactDatabase(obj.tmplDailyInfo, database, int2str(aniSheets(iAni).sheetId), where, aniSheets(iAni).title);
-          if cancelled
-            fprintf('CANCELLED by user.\n');
-            return;
-          end
-          
-          numChanged        = numChanged + didSomething;
-          if didSomething
-            fprintf('modified\n');
-          else
-            fprintf('no change\n');
-          end
-        end
-      end
-    end
+%     function numChanged = redactDailyLogs(obj)
+%       %% Always get the current animal lists and database structure
+%       [animals,researchers] = obj.pullAnimalList();
+%       numChanged            = 0;
+%       for iID = 1:numel(researchers)
+%         fprintf(' ***  %-15s', researchers(iID).ID);
+%         if isempty(animals{iID}) || isempty(researchers(iID).wateringLogs)
+%           fprintf('  (no animals/logs)\n');
+%           continue;
+%         end
+%         fprintf('\n');
+%         
+%         %% Setup data source
+%         database            = researchers(iID).wateringLogs;
+%         researcher          = obj.pullLogsStructure(researchers(iID).ID);
+%         sheetProps          = [researcher.logStructure.sheets.properties];
+%         where               = sprintf('daily logs (researcher %s)', researchers(iID).ID);
+%         
+%         %% Redact watering sheet only for the listed animals
+%         aniSheets           = sheetProps( ismember(lower({sheetProps.title}), lower({animals{iID}.ID})) );
+%         for iAni = 1:numel(aniSheets)
+%           fprintf('  |   %20s : ', aniSheets(iAni).title);
+%           drawnow;
+%           [didSomething, cancelled]     ...
+%                             = obj.redactDatabase(obj.tmplDailyInfo, database, int2str(aniSheets(iAni).sheetId), where, aniSheets(iAni).title);
+%           if cancelled
+%             fprintf('CANCELLED by user.\n');
+%             return;
+%           end
+%           
+%           numChanged        = numChanged + didSomething;
+%           if didSomething
+%             fprintf('modified\n');
+%           else
+%             fprintf('no change\n');
+%           end
+%         end
+%       end
+%     end
     
 
     %----- Convert string input (raw database entries) to a predefined format; checks for validity if mandatory 
@@ -5224,23 +5264,29 @@ classdef AnimalDatabase < handle
 %         obj.(['tmpl' field{:}])   = tmpl;
 %       end
 %     
-      
+
+      templates = obj.getTemplateDJ;
+      for field = fieldnames(templates)'
+        tmpl            = templates.(field{:});
+        obj.(['tmpl' field{:}]) = tmpl;
+      end
+
       
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %                             And now the same in Datajoint
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     %First the duty Roaster
-    DutyRoaster = struct();
+    obj.DutyRoster = struct();
     for days_idx = 1:length(obj.DAYS_OF_WEEK)
-        DutyRoaster(days_idx).Day = obj.DAYS_OF_WEEK{days_idx};
-        DutyRoaster(days_idx).Technician = fetchn(lab.DutyRoaster, [obj.DAYS_OF_WEEK_FULL{days_idx}, '_duty'] );
+        obj.DutyRoster(days_idx).Day = obj.DAYS_OF_WEEK{days_idx};
+        obj.DutyRoster(days_idx).Technician = fetchn(lab.DutyRoaster, [obj.DAYS_OF_WEEK_FULL{days_idx}, '_duty'] );
     end
-    overview_dj.DutyRoster = DutyRoaster;
-    
+    overview_dj.DutyRoster = obj.DutyRoster;
+      
     %Then the Technicians
     query = lab.User() & 'primary_tech != "N/A"';
-    Technicians =  struct('Name', query.fetchn('full_name'),        ...
+    obj.Technicians =  struct('Name', query.fetchn('full_name'),        ...
                             'ID', query.fetchn('user_id'),         ...
                       'Presence', query.fetchn('presence'),         ...
                  'DayCutoffTime', query.fetchn('day_cutoff_time'),  ...
@@ -5251,11 +5297,11 @@ classdef AnimalDatabase < handle
                     'ContactVia', query.fetchn('contact_via'),      ...
                   'slackWebhook', query.fetchn('slack_webhook'),    ...
                    'primaryTech', query.fetchn('primary_tech'));
-     overview_dj.Technicians =  Technicians';
+     overview_dj.Technicians =  obj.Technicians';
      
      %Then the Researchers
      query = lab.User() & 'primary_tech = "N/A"';
-     Researchers =  struct('Name', query.fetchn('full_name'),                   ...
+     obj.Researchers =  struct('Name', query.fetchn('full_name'),                   ...
                             'ID', query.fetchn('user_id'),                      ...
                       'Presence', query.fetchn('presence'),                     ...
                  'DayCutoffTime', query.fetchn('day_cutoff_time'),              ...
@@ -5271,19 +5317,19 @@ classdef AnimalDatabase < handle
       user_ids = query.fetchn('user_id');
       for l_idx = 1:length(user_ids) 
         user_lab = fetch( lab.UserLab & ['user_id = "' user_ids{l_idx} '"'], 'lab');
-        Researchers(l_idx).PI = fetchn(lab.Lab() & ['lab = "' user_lab.lab '"'], 'pi_name');
-        Researchers(l_idx).SecondaryContact = fetchn(lab.UserSecondaryContact & ['user_id = "' user_ids{l_idx} '"'], 'secondary_contact');
+        obj.Researchers(l_idx).PI = fetchn(lab.Lab() & ['lab = "' user_lab.lab '"'], 'pi_name');
+        obj.Researchers(l_idx).SecondaryContact = fetchn(lab.UserSecondaryContact & ['user_id = "' user_ids{l_idx} '"'], 'secondary_contact');
       end
-      overview_dj.Researchers = Researchers';
+      overview_dj.Researchers = obj.Researchers';
       
       % Then the NotificationSettings; take only the most up-to-date entry
       all_dates = fetchn(lab.NotificationSettings, 'notification_settings_date');
       query = lab.NotificationSettings & ['notification_settings_date = "' all_dates{end} '"'];
-      NotificationSettings.MaxResponseTime  = query.fetchn('max_response_time');
-      NotificationSettings.ChangeCutoffTime = cell2mat(query.fetchn('change_cutoff_time'));
-      NotificationSettings.WeeklyDigestDay  = char(query.fetchn('weekly_digest_day'));
-      NotificationSettings.WeeklyDigestTime = cell2mat(query.fetchn('weekly_digest_time'));
-      overview_dj.NotificationSettings = NotificationSettings;
+      obj.NotificationSettings.MaxResponseTime  = query.fetchn('max_response_time');
+      obj.NotificationSettings.ChangeCutoffTime = cell2mat(query.fetchn('change_cutoff_time'));
+      obj.NotificationSettings.WeeklyDigestDay  = char(query.fetchn('weekly_digest_day'));
+      obj.NotificationSettings.WeeklyDigestTime = cell2mat(query.fetchn('weekly_digest_time'));
+      overview_dj.NotificationSettings = obj.NotificationSettings;
       
       overview = overview_dj;      
       disp('pullOverview executed - with datajoint backend.');
@@ -5408,7 +5454,7 @@ classdef AnimalDatabase < handle
       animals             = cell(size(animalID));
       
       % get researcher information from DataJoint database
-      researcher = AnimalDatabase.getResearcherDJ('testuser');
+      researcher = AnimalDatabase.getResearcherDJ(researcherID);
       for iAni = 1:numel(animalID)
         animal            = researcher.animals( strcmpi({researcher.animals.ID}, animalID{iAni}) );
         animals{iAni}     = animal;
