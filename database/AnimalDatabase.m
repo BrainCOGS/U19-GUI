@@ -14,7 +14,7 @@
 %       animals   = dbase.pullAnimalList();                 % all researchers
 %       animals   = dbase.pullAnimalList('sakoay');         % a single researcher with ID = sakoay
 %       logs      = dbase.pullDailyLogs('sakoay');          % all animals for sakoay
-%       logs      = dbase.pullDailyLogs('sakoay','k62');    % a particular animal ID for sakoay
+%       logs      = dbase.pullDailyLogs('sakoay','K62');    % a particular animal ID for sakoay
 %
 % To write data to the database, use the following "push*" functions:
 %       dbase.pushAnimalInfo('sakoay', 'k62', 'received', 1.3, 'weight', 22.5);
@@ -96,7 +96,7 @@ classdef AnimalDatabase < handle
 %     DATABASE_ID           = getfield(load('database_config.mat'), 'database_id')
     UPDATE_PERIOD         = 1000  %TIME FOR AUTOUPDATE - UNIT???
     UPDATE_PERIOD_SCALE   = 0.3
-%     NUM_POLLS_SCALE       = 3
+    NUM_POLLS_SCALE       = 3
     
     NUMBER_FORMAT         = '%.4g'
     DATE_FORMAT           = '%d/%d/%d'
@@ -6306,7 +6306,7 @@ classdef AnimalDatabase < handle
       end
       
       %% Run this in a try-catch block so that errors are more noticeable
-      try
+%       try
 
       %% Set timestamp if we have a valid update state
       thisDate                = AnimalDatabase.datenum2date();
@@ -6450,11 +6450,11 @@ classdef AnimalDatabase < handle
         set(obj.btn.aniInfo(iAni), 'String', blurb);
       end
       
-      catch err
-        obj.imBusy            = false;
-        displayException(err);
+%       catch err
+%         obj.imBusy            = false;
+%         displayException(err);
 %         keyboard
-      end
+%       end
       
       obj.imBusy              = false;
     end
