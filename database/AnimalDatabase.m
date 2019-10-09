@@ -294,7 +294,6 @@ classdef AnimalDatabase < handle
                 templates.(itemp.template_name) = fields';
             end
         end
-        disp('done')
     end
     
     %----- From DataJoint Database, reconstruct the vector of struct of animals for a given researcher
@@ -506,15 +505,15 @@ classdef AnimalDatabase < handle
 
     
     %----- Read all bytes from stream to uint8 (http://stackoverflow.com/a/1323535)
-    function out = readStream(inStream)
-      import com.mathworks.mlwidgets.io.InterruptibleStreamCopier;
-      byteStream  = java.io.ByteArrayOutputStream();
-      isc         = InterruptibleStreamCopier.getInterruptibleStreamCopier();
-      isc.copyStream(inStream, byteStream);
-      inStream.close();
-      byteStream.close();
-      out         = char(typecast(byteStream.toByteArray', 'uint8'));
-    end
+%     function out = readStream(inStream)
+%       import com.mathworks.mlwidgets.io.InterruptibleStreamCopier;
+%       byteStream  = java.io.ByteArrayOutputStream();
+%       isc         = InterruptibleStreamCopier.getInterruptibleStreamCopier();
+%       isc.copyStream(inStream, byteStream);
+%       inStream.close();
+%       byteStream.close();
+%       out         = char(typecast(byteStream.toByteArray', 'uint8'));
+%     end
     
     
     %----- Add columns to a given field
@@ -999,47 +998,47 @@ classdef AnimalDatabase < handle
     end
     
     %----- Gets structural information about the watering logs of the given researcher
-    function [researcher, refreshed, index] = pullLogsStructure(obj, researcher, forceUpdate)
-      if ischar(researcher)
-        [researcher,index]  = obj.findResearcher(researcher);
-      end
-      if nargin < 3 || isempty(forceUpdate)
-        forceUpdate         = false;
-      end
-      refreshed             = false;
-      
-      %% Special case for person without animals, don't require watering logs
-      if length(researcher.animals) == 0
-        if nargout > 2 && ~exist('index', 'var')
-          [~,index]         = obj.findResearcher(researcher.ID);
-        end
-        return;
-      end
-      
-      %% Locate the watering logs spreadsheet, refreshing the overview if necessary
-      database              = researcher.wateringLogs;
-      if isempty(database)
-        obj.pullOverview();
-        [researcher,index]  = obj.findResearcher(researcher.ID);
-        if isempty(database)
-          error('AnimalDatabase:pullLogsStructure', 'Researcher %s does not have a wateringLogs URL specified. Please fix this via the Google Spreadsheets web interface.', researcher.ID);
-        end
-      end
-
-      %% Retrieve the log structure if necessary
-      if isempty(researcher.logStructure) || forceUpdate
-        [~,index]           = obj.findResearcher(researcher.ID);
-        obj.Researchers(index).logStructure               ...
-                            = mat2sheets(database);
-        [researcher,index]  = obj.findResearcher(researcher.ID);
-        refreshed           = true;
-      end
-      
-      %% Ensure all required outputs
-      if nargout > 2 && ~exist('index', 'var')
-        [~,index]           = obj.findResearcher(researcher.ID);
-      end
-    end
+%     function [researcher, refreshed, index] = pullLogsStructure(obj, researcher, forceUpdate)
+%       if ischar(researcher)
+%         [researcher,index]  = obj.findResearcher(researcher);
+%       end
+%       if nargin < 3 || isempty(forceUpdate)
+%         forceUpdate         = false;
+%       end
+%       refreshed             = false;
+%       
+%       %% Special case for person without animals, don't require watering logs
+%       if length(researcher.animals) == 0
+%         if nargout > 2 && ~exist('index', 'var')
+%           [~,index]         = obj.findResearcher(researcher.ID);
+%         end
+%         return;
+%       end
+%       
+%       %% Locate the watering logs spreadsheet, refreshing the overview if necessary
+%       database              = researcher.wateringLogs;
+%       if isempty(database)
+%         obj.pullOverview();
+%         [researcher,index]  = obj.findResearcher(researcher.ID);
+%         if isempty(database)
+%           error('AnimalDatabase:pullLogsStructure', 'Researcher %s does not have a wateringLogs URL specified. Please fix this via the Google Spreadsheets web interface.', researcher.ID);
+%         end
+%       end
+% 
+%       %% Retrieve the log structure if necessary
+%       if isempty(researcher.logStructure) || forceUpdate
+%         [~,index]           = obj.findResearcher(researcher.ID);
+%         obj.Researchers(index).logStructure               ...
+%                             = mat2sheets(database);
+%         [researcher,index]  = obj.findResearcher(researcher.ID);
+%         refreshed           = true;
+%       end
+%       
+%       %% Ensure all required outputs
+%       if nargout > 2 && ~exist('index', 'var')
+%         [~,index]           = obj.findResearcher(researcher.ID);
+%       end
+%     end
     
     %----- Find a particular animal's watering log sheet, refreshing info if necessary
 %     function [gid, researcher, refreshed, index] = findDailyLogsID(obj, researcher, animalID, allowRefresh, where)
