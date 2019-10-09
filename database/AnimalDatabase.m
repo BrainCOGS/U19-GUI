@@ -94,7 +94,7 @@ classdef AnimalDatabase < handle
     
 %     FIRST_SHEET           = '0'
 %     DATABASE_ID           = getfield(load('database_config.mat'), 'database_id')
-    UPDATE_PERIOD         = 1000  %TIME FOR AUTOUPDATE - UNIT???
+    UPDATE_PERIOD         = 10  %TIME FOR AUTOUPDATE - UNIT???
     UPDATE_PERIOD_SCALE   = 0.3
     NUM_POLLS_SCALE       = 3
     
