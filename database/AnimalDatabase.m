@@ -226,6 +226,12 @@ classdef AnimalDatabase < handle
             temp = fetch(reference.Template & sprintf('template_name="%s"', template_name), '*');
             templates = fetch(reference.(['Template' template_name]), '*');
             templates = rmfield(templates, 'template_name');
+            %reorder by plot index, and get rid of it
+            T = struct2table(templates);
+            sortedT = sortrows(T, 'plot_index');
+            templates = table2struct(sortedT);
+            templates = rmfield(templates, 'plot_index');
+                
             if ismember(template_name, {'Animal', 'DailyInfo'})
                 templates = cell2struct(struct2cell(templates), temp.original_field_names);
                 for iTmpl = 1:numel(templates)
@@ -255,6 +261,13 @@ classdef AnimalDatabase < handle
             for itemp = temps'
                 fields = fetch(reference.(['Template' itemp.template_name]) & itemp, '*');
                 fields = rmfield(fields, 'template_name');
+                
+                %reorder by plot index, and get rid of it
+                T = struct2table(fields);
+                sortedT = sortrows(T, 'plot_index');
+                fields = table2struct(sortedT);
+                fields = rmfield(fields, 'plot_index');
+                
                 if ismember(itemp.template_name, {'Animal', 'DailyInfo'})
                     fields = cell2struct(struct2cell(fields), itemp.original_field_names);
                     %reformat the fields 'grouping' and 'date'
@@ -281,7 +294,7 @@ classdef AnimalDatabase < handle
                 templates.(itemp.template_name) = fields';
             end
         end
-        
+        disp('done')
     end
     
     %----- From DataJoint Database, reconstruct the vector of struct of animals for a given researcher
@@ -3880,14 +3893,14 @@ classdef AnimalDatabase < handle
         interactive   = true;
       end
       
-      %% Required to retrieve tokens from Google
-      if ~exist('google_tokens.mat', 'file')
-        RunOnce(AnimalDatabase.CLIENT_ID, AnimalDatabase.CLIENT_SECRET);
-      end
-      
-      cookieManager   = java.net.CookieManager([], java.net.CookiePolicy.ACCEPT_ALL);
-      java.net.CookieHandler.setDefault(cookieManager);
-      obj.httpHandler = sun.net.www.protocol.https.Handler;
+%       %% Required to retrieve tokens from Google
+%       if ~exist('google_tokens.mat', 'file')
+%         RunOnce(AnimalDatabase.CLIENT_ID, AnimalDatabase.CLIENT_SECRET);
+%       end
+%       
+%       cookieManager   = java.net.CookieManager([], java.net.CookiePolicy.ACCEPT_ALL);
+%       java.net.CookieHandler.setDefault(cookieManager);
+%       obj.httpHandler = sun.net.www.protocol.https.Handler;
       
       %% Set self identification
       if exist('RigParameters', 'class')
