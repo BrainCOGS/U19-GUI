@@ -3539,38 +3539,38 @@ classdef AnimalDatabase < handle
     end
     
     %----- Transfer the location of selected cages to the given holder
-    function transferAnimals(obj, hObject, event, holderID, closeFig, personID, forFinalize)
-      %% Loop through all selected groups of animals
-      btnGroup        = obj.btn.aniGroup(arrayfun(@(x) get(x,'Value'), obj.btn.aniGroup) == 1);
-      for iGrp = 1:numel(btnGroup)
-        info          = get(btnGroup(iGrp), 'UserData');
-        groupAni      = info{2};
-        
-        %% Push the new location of these animals 
-        researcherID  = unique({groupAni.owner});
-        if numel(researcherID) ~= 1
-          error('AnimalDatabase:transferAnimals', 'Invalid researcher (owner) ID for animals: %s', strjoin({groupAni.ID}));
-        end
-        obj.pushBatchInfo(researcherID{:}, {groupAni.ID}, 'whereAmI', holderID);
-        
-        %% Record the new location for further interactions with the GUI
-        [groupAni.whereAmI] = deal(holderID);
-        info{1}             = obj.whereIsThisThing(groupAni, personID);
-        info{2}             = groupAni;
-        set(btnGroup(iGrp), 'UserData', info);
-      end
-      
-      %% Close the GUI figure if so desired
-      if isempty(closeFig)
-        obj.selectAnimalGroup([], [], personID, forFinalize);
-      else
-        delete(closeFig);
-        if strcmpi(get(obj.axs.aniImage,'Visible'), 'off')
-          delete( get(obj.tbl.aniData, 'Children') );
-          delete( get(obj.tbl.aniDaily, 'Children') );
-        end
-      end
-    end
+%     function transferAnimals(obj, hObject, event, holderID, closeFig, personID, forFinalize)
+%       %% Loop through all selected groups of animals
+%       btnGroup        = obj.btn.aniGroup(arrayfun(@(x) get(x,'Value'), obj.btn.aniGroup) == 1);
+%       for iGrp = 1:numel(btnGroup)
+%         info          = get(btnGroup(iGrp), 'UserData');
+%         groupAni      = info{2};
+%         
+%         %% Push the new location of these animals 
+%         researcherID  = unique({groupAni.owner});
+%         if numel(researcherID) ~= 1
+%           error('AnimalDatabase:transferAnimals', 'Invalid researcher (owner) ID for animals: %s', strjoin({groupAni.ID}));
+%         end
+%         obj.pushBatchInfo(researcherID{:}, {groupAni.ID}, 'whereAmI', holderID);
+%         
+%         %% Record the new location for further interactions with the GUI
+%         [groupAni.whereAmI] = deal(holderID);
+%         info{1}             = obj.whereIsThisThing(groupAni, personID);
+%         info{2}             = groupAni;
+%         set(btnGroup(iGrp), 'UserData', info);
+%       end
+%       
+%       %% Close the GUI figure if so desired
+%       if isempty(closeFig)
+%         obj.selectAnimalGroup([], [], personID, forFinalize);
+%       else
+%         delete(closeFig);
+%         if strcmpi(get(obj.axs.aniImage,'Visible'), 'off')
+%           delete( get(obj.tbl.aniData, 'Children') );
+%           delete( get(obj.tbl.aniDaily, 'Children') );
+%         end
+%       end
+%     end
     
     %----- Transfer the location of selected cages to the given holder
     function selectAllGroups(obj, hObject, event, personID, forCheckIn)
