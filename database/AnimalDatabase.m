@@ -2956,9 +2956,12 @@ classdef AnimalDatabase < handle
         isRepeat      = false;
       else
         refWeight     = animal.rightNow.weight;
-        isRepeat      = ~isnan(animal.rightNow.received)                                        ...
-                     && animal.rightNow.date == AnimalDatabase.datenum2date(datevec(now()))     ...
-                      ;
+        if isempty(animal.rightNow.received)
+            isRepeat      = animal.rightNow.date == AnimalDatabase.datenum2date(datevec(now()));
+        else
+            isRepeat      = ~isnan(animal.rightNow.received)                                        ...
+                         && animal.rightNow.date == AnimalDatabase.datenum2date(datevec(now()));
+        end
       end
       
       %% Obtain the animal's weight
