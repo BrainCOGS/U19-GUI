@@ -454,6 +454,9 @@ classdef AnimalOverview < handle
             elseif isempty(daily.(field))              % Numeric data is assumed to be nan if not available
               log.(field)(range)          = nan;
             else
+              if length(number)>1
+                  number = number(end);
+              end
               log.(field)(range)          = number;
             end
           end
