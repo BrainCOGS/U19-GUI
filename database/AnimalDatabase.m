@@ -1,8 +1,20 @@
 % ANIMALDATABASE  Database of researcher/animal lists.
 %
+% A database of responsibles and their mice are kept in Google spreadsheets, from which data can be
+% pulled/pushed using this class as an interface. The list of all people/animals are kept in the
+% spreadsheet indicated by AnimalDatabase.DATABASE_ID, so for example if you use this URL to
+% access your database:
+%     https://docs.google.com/spreadsheets/d/ABCDE/edit#gid=1296553442
+% then you should edit AnimalDatabase.m such that:
+%     DATABASE_ID = 'ABCDE'   
+%
+% Furthermore, the daily logs for individual mice are kept in one spreadsheet per researcher (who is
+% the primary responsible for those mice). For now when adding a researcher, one has to manually
+% create one spreadsheet and link it into the DATABASE_ID spreadsheet. See instructions in that
+% spreadsheet for how to do this.
 % ------------------------------
 %   Interface use
-% ------------------------------
+% -----------------------------
 %
 % This interface allows for programmatic access and update of the contained data. In your
 % program you should first create an instance of the database to interact with:
