@@ -316,10 +316,8 @@ classdef AnimalDatabase < handle
                              'whereAmI', where_am_I,       ...
                              'protocol', protocol,         ...
                              'genotype', genotype,         ...
-                             'initWeight', num2cell(initial_weight));
-                         
-       
-
+                             'initWeight', num2cell(initial_weight));     
+        
         for subj_idx = 1:length(subject_id)
             subj = subject_id{subj_idx};
             animals_dj(subj_idx).sex =  Sex(sex{subj_idx});
@@ -431,6 +429,52 @@ classdef AnimalDatabase < handle
         end
         animals_dj = animals_dj';
        
+        
+        
+        %%% Work from here - instead of loop over all subjects of a user, query them all directly
+        
+        subjects = subject.Subject() & ['user_id = "', researcherID, '"'];
+        [subject_id, identifying_image, where_am_I, protocol, sex, dob, genotype, initial_weight] = subjects.fetchn('subject_id','head_plate_mark', 'location', 'protocol', 'sex', 'dob', 'line', 'initial_weight');
+        animals =  struct('ID',   subject_id,            ...
+                           'image', identifying_image,   ...
+                           'whereAmI', where_am_I,       ...
+                           'protocol', protocol,         ...
+                           'genotype', genotype,         ...
+                           'initWeight', num2cell(initial_weight), ...
+                           'sex', sex,                   ...
+                           'dob', dob);  
+
+        animals.cage = fetchn(subject.CagingStatus & subjects, 'cage')
+
+        effective
+        techDuties
+        status
+        waterPerDay
+        rightNow
+        actItems
+        owner
+        imageFile
+        
+        fetchn( subject.CagingStatus & ['subject_id = "', subj, '"'] );
+        
+        q = (subject.Subject & 'user_id = "edward"') * action.WaterAdministration() * ...
+            subject.CagingStatus * action.SubjectStatus;
+
+        qq = (subject.Subject & 'user_id = "edward"') * proj(action.Weighing, 'location->weighing_location');
+             (subject.Subject & 'user_id = "edward"') * proj(acquisition.Session, 'location->session_location') ;
+
+        fetchn(action.ActionItem & (subject.Subject & 'user_id = "edward"'), 'action_date'); % 25ms
+
+        fetchn((subject.Subject & 'user_id = "edward"') * action.SubjectStatus, 'subject_status'); % 20ms
+
+        field_order = {'ID', 'image', 'whereAmI', 'protocol', 'genotype', ...
+                       'effectve', 'techDuties', 'status', 'waterPerDay', 'earned', ...
+                       'supplement', 'received'};
+                   
+        researcher = fetch(lab.User*lab.UserLab*lab.UserProtocol*lab.Lab*lab.UserSecondaryContact ...
+                           & struct('user_id', 'edward'), '*');  %70ms
+        %%%    
+        
     end
     
     %----- From DataJoint Database, reconstruct the struct of researcher
