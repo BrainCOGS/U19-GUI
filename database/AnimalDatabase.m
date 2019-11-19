@@ -6,7 +6,7 @@
 % access your database:
 %     https://docs.google.com/spreadsheets/d/ABCDE/edit#gid=1296553442
 % then you should edit AnimalDatabase.m such that:
-%     DATABASE_ID = 'ABCDE'  
+%     DATABASE_ID = 'ABCDE'   
 %
 % Furthermore, the daily logs for individual mice are kept in one spreadsheet per researcher (who is
 % the primary responsible for those mice). For now when adding a researcher, one has to manually
