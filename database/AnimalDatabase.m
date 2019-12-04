@@ -308,111 +308,129 @@ classdef AnimalDatabase < handle
               mkdir(imageDir);
             end
         end
-        
-        subjects = subject.Subject() & ['user_id = "', researcherID, '"'];
-        [subject_id, identifying_image, where_am_I, protocol, sex, dob, genotype, initial_weight] = subjects.fetchn('subject_id','head_plate_mark', 'location', 'protocol', 'sex', 'dob', 'line', 'initial_weight');
-        animals_dj =  struct('ID',   subject_id,            ...
-                             'image', identifying_image,   ...
-                             'whereAmI', where_am_I,       ...
-                             'protocol', protocol,         ...
-                             'genotype', genotype,         ...
-                             'initWeight', num2cell(initial_weight));     
-        
-        for subj_idx = 1:length(subject_id)
-            subj = subject_id{subj_idx};
-            animals_dj(subj_idx).sex =  Sex(sex{subj_idx});
 
-            if ~isempty(dob{subj_idx})
-                date_correctformat = datevec(dob{subj_idx})*[[1,0,0,0,0,0];[0,1,0,0,0,0];[0,0,1,0,0,0]]';
-                animals_dj(subj_idx).dob = date_correctformat;
+        subjects = subject.Subject() & struct('user_id', researcherID);
+
+        % This is queried for all animals
+        subject_info    = subjects.fetch('subject_fullname', 'head_plate_mark', 'location', 'protocol', 'sex', 'dob', 'line', 'initial_weight');
+        cageinfo        = fetch(subjects * subject.CagingStatus, 'subject_fullname', 'cage');    
+        subjectstatus   = fetch(subjects * action.SubjectStatus, 'subject_fullname', 'subject_status', 'schedule', 'effective_date', 'water_per_day');       
+
+        % This is queried ONLY for the latest entry 
+        water_info      = fetch( ...
+            aggr(subjects, action.WaterAdministration, 'MAX(administration_date)->administration_date') * action.WaterAdministration, ...
+            'subject_fullname', 'earned', 'supplement', 'received');
+        weighing_info   = fetch( ...
+            aggr(subjects, proj(action.Weighing, 'weight'), 'MAX(weighing_time)->weighing_time') * action.Weighing, ...
+            'subject_fullname', 'weighing_time', 'weight');
+        session_info    = fetch( ...
+            aggr(subjects, acquisition.Session, 'MAX(session_date)->session_date')*acquisition.Session, ...
+            'subject_fullname', 'session_start_time', 'session_end_time', 'session_performance', 'level');
+        actionitem_info = fetch( ...
+            aggr(subjects, action.ActionItem, 'MAX(action_date)->action_date')*action.ActionItem, ...
+            'subject_fullname', 'action');
+        
+        
+        % rename fields
+        animals_dj = cell2struct( struct2cell(subject_info), ...
+            {'ID', 'sex', 'dob', 'image', 'whereAmI', 'protocol', 'genotype', 'initial_weight'});
+                         
+        % Data has to be reorganized to fit into the standard AnimalDB
+        % format - but not further querying is done.
+        for subj_idx = 1:length(subject_info)
+
+            subj = subject_info(subj_idx).subject_fullname;
+            animals_dj(subj_idx).sex = Sex(subject_info(subj_idx).sex);
+
+            if ~isempty(subject_info(subj_idx).dob)
+                dv = datevec(subject_info(subj_idx).dob, 'yyyy-mm-dd');
+                animals_dj(subj_idx).dob = dv(1:3);
             else
-                animals_dj(subj_idx).dob = [99,1,1];  %means no DOB given.
+                animals_dj(subj_idx).dob = [];  % Means no DOB given.
             end
 
-            cages = subject.CagingStatus & ['subject_id = "', subj, '"'];
-            cage_id = cages.fetchn('cage');
-            if ~isempty(cage_id)
-                animals_dj(subj_idx).cage = char(cage_id);
+            ind = find(strcmp({cageinfo.subject_fullname}, subj));
+            if ~isempty(ind)
+                cage_id = {cageinfo.cage};
+                animals_dj(subj_idx).cage = char(cage_id(ind));
             else
                 animals_dj(subj_idx).cage = [];
             end
+            
+            indices = find(strcmp({subjectstatus.subject_fullname}, subj));
 
-            this_subject = action.SubjectStatus & ['subject_id = "', subj, '"'];
-            [status, tech_duties, effective, waterperday] = this_subject.fetchn('subject_status', 'schedule' , 'effective_date', 'water_per_day');
 
-            td = {};
-            st = {};
-            ed = {};
-            for record_idx = 1:length(effective)  % all have a starting date
-                ed{record_idx} = AnimalDatabase.num2date(AnimalDatabase.datenum2date( datevec(effective{record_idx})));  % Transform so that Sue Ann's Code understands
-                td{record_idx} = Responsibility(strsplit(tech_duties{record_idx},'/'));      % Translate 1,2,3 to Train/Nothing/Water etc.
-                st{record_idx} = HandlingStatus(status{record_idx});                         % Translate InExperiments, AdLibWater to 1,2,3 etc.
+            td = cell(1, length(indices));
+            for record_idx = 1:length(indices)
+                subject_idx = indices(record_idx);
+                td{record_idx} = Responsibility(strsplit(subjectstatus(subject_idx).schedule,'/'));      % Translate 1,2,3 to Train/Nothing/Water etc.
             end
-            animals_dj(subj_idx).effective = ed;
-            animals_dj(subj_idx).techDuties = td;
-            animals_dj(subj_idx).status = st;
-            animals_dj(subj_idx).waterPerDay = reshape( num2cell(waterperday), [1, length(waterperday)]);  
+
+            animals_dj(subj_idx).techDuties  = td;
+            [Y,M,D] = datevec({subjectstatus(indices).effective_date}, 'yyyy-mm-dd');
+            animals_dj(subj_idx).effective   = num2cell([Y,M,D],2)';
+            animals_dj(subj_idx).status      = num2cell(int8(HandlingStatus({subjectstatus(indices).subject_status})));
+            animals_dj(subj_idx).waterPerDay = {subjectstatus(indices).water_per_day};  
 
 
-            % THE REST ONLY CONCERNS THE LAST RECORD - MORE DETAILS IN LOGS! 
-            rightNow = struct();
-
-            query = (action.Weighing & this_subject);
-            [weighing_time, weight] = query.fetchn('weighing_time','weight');
-            if ~isempty(weighing_time)
-                dv = datevec(weighing_time{end});
+            % THE REST ONLY CONCERNS THE LAST RECORD
+            % initialize with NaNs
+            rightNow = struct('date', NaN, 'weight', NaN, ...
+                'earned', NaN, 'supplement', NaN, 'received', NaN, ...
+                'trainStart', NaN, 'trainEnd', NaN, 'performance', NaN, 'mainMazeID', NaN);
+        
+            % First: bodyweight
+            ind = find(strcmp({weighing_info.subject_fullname}, subj));
+            if ~isempty(ind)
+                last_weighing_time = weighing_info(ind).weighing_time;
+                tmp = strsplit(last_weighing_time, ' ');
+                dv = datevec(tmp{1}, 'yyyy-mm-dd');
                 rightNow.date = AnimalDatabase.datenum2date(dv(1:3));
-                rightNow.weight = weight(end);
-                selector = sprintf('administration_date = "%4d-%1d-%2d"', AnimalDatabase.num2date(rightNow.date));
-                query =  action.WaterAdministration() & ['subject_id = "', subj, '"'] & selector;
-                [earned, supplement, received] = query.fetchn('earned', 'supplement', 'received');
-                if ~isempty(earned)
-                    rightNow.earned = earned;
-                    rightNow.supplement = supplement;
-                    rightNow.received = received;
-                else
-                    rightNow.earned = 0;
-                    rightNow.supplement = 0;
-                    rightNow.received = 0;
+                rightNow.weight = weighing_info(ind).weight;
+            end
+            
+            % Second: water administration
+            ind = find(strcmp({water_info.subject_fullname}, subj));
+            if ~isempty(ind)
+                dv = datevec(water_info(ind).administration_date, 'yyyy-mm-dd');
+                if  AnimalDatabase.datenum2date(dv(1:3)) == rightNow.date & ~isempty(water_info(ind).earned)
+                    rightNow.earned     = water_info(ind).earned;
+                    rightNow.supplement = water_info(ind).supplement;
+                    rightNow.received   = water_info(ind).received;
                 end
-                selector = sprintf('session_date = "%4d-%1d-%2d"', AnimalDatabase.num2date(rightNow.date));
-                query =  acquisition.Session() & ['subject_id = "', subj, '"'] & selector;
-                [session_start_time, session_end_time, session_performance, level] = ...
-                    query.fetchn('session_start_time', 'session_end_time', 'session_performance', 'level');
-                if ~isempty(session_start_time)
-                    rightNow.trainStart = session_start_time;
-                    rightNow.trainEnd = session_end_time;
-                    rightNow.performance = session_performance;
-                    rightNow.mainMazeID = level;
-                else
-                    rightNow.trainStart = NaN;
-                    rightNow.trainEnd = NaN;
-                    rightNow.performance = NaN;
-                    rightNow.mainMazeID = NaN;
+            end
+  
+            % Third: Session performance
+            ind = find(strcmp({session_info.subject_fullname}, subj));
+            if ~isempty(ind)
+                dv = datevec(session_info(ind).session_date, 'yyyy-mm-dd');
+                if  AnimalDatabase.datenum2date(dv(1:3)) == rightNow.date & ~isempty(session_info(ind).session_start_time)
+                    rightNow.trainStart  = session_info(ind).session_start_time;
+                    rightNow.trainEnd    = session_info(ind).session_end_time;
+                    rightNow.performance = session_info(ind).session_performance;
+                    rightNow.mainMazeID  = session_info(ind).level;
                 end
-            else
-                rightNow.date = NaN;
-                rightNow.weight = NaN;
-                rightNow.earned = NaN;
-                rightNow.supplement = NaN;
-                rightNow.received = 0;
-                rightNow.trainStart = NaN;
-                rightNow.trainEnd = NaN;
-                rightNow.performance = NaN;
-                rightNow.mainMazeID = NaN;
             end
             animals_dj(subj_idx).rightNow = rightNow;
 
-            selector = sprintf('action_date = "%4d-%1d-%2d"', AnimalDatabase.num2date(rightNow.date));
-            actionItems = action.ActionItem & ['subject_id = "', subj, '"'] & selector;
-            action = actionItems.fetchn('action');
-            if ~isempty(action)
-                animals_dj(subj_idx).actItems = action;
-            else
-                animals_dj(subj_idx).actItems = [];
+            % Fourth: Action Items
+            animals_dj(subj_idx).actItems = [];
+            ind = find(strcmp({actionitem_info.subject_fullname}, subj));
+            if ~isempty(ind)
+                act = {};
+                counter = 1;
+                for single_idx = ind
+                    dv = datevec(actionitem_info(single_idx).action_date, 'yyyy-mm-dd');
+                    if  AnimalDatabase.datenum2date(dv(1:3)) == rightNow.date & ~isempty(actionitem_info(single_idx).action_id)
+                         act{counter} = actionitem_info(single_idx).action;
+                         counter = counter + 1;
+                    end
+                end
+                animals_dj(subj_idx).actItems = act;
             end
-            
+
             animals_dj(subj_idx).owner = researcherID;
+            
             
             if add_imagefile
                 animals_dj(subj_idx).imageFile              ...
@@ -428,53 +446,7 @@ classdef AnimalDatabase < handle
                 
         end
         animals_dj = animals_dj';
-       
-        
-        
-        %%% Work from here - instead of loop over all subjects of a user, query them all directly
-        
-        subjects = subject.Subject() & ['user_id = "', researcherID, '"'];
-        [subject_id, identifying_image, where_am_I, protocol, sex, dob, genotype, initial_weight] = subjects.fetchn('subject_id','head_plate_mark', 'location', 'protocol', 'sex', 'dob', 'line', 'initial_weight');
-        animals =  struct('ID',   subject_id,            ...
-                           'image', identifying_image,   ...
-                           'whereAmI', where_am_I,       ...
-                           'protocol', protocol,         ...
-                           'genotype', genotype,         ...
-                           'initWeight', num2cell(initial_weight), ...
-                           'sex', sex,                   ...
-                           'dob', dob);  
 
-        animals.cage = fetchn(subject.CagingStatus & subjects, 'cage')
-
-        effective
-        techDuties
-        status
-        waterPerDay
-        rightNow
-        actItems
-        owner
-        imageFile
-        
-        fetchn( subject.CagingStatus & ['subject_id = "', subj, '"'] );
-        
-        q = (subject.Subject & 'user_id = "edward"') * action.WaterAdministration() * ...
-            subject.CagingStatus * action.SubjectStatus;
-
-        qq = (subject.Subject & 'user_id = "edward"') * proj(action.Weighing, 'location->weighing_location');
-             (subject.Subject & 'user_id = "edward"') * proj(acquisition.Session, 'location->session_location') ;
-
-        fetchn(action.ActionItem & (subject.Subject & 'user_id = "edward"'), 'action_date'); % 25ms
-
-        fetchn((subject.Subject & 'user_id = "edward"') * action.SubjectStatus, 'subject_status'); % 20ms
-
-        field_order = {'ID', 'image', 'whereAmI', 'protocol', 'genotype', ...
-                       'effectve', 'techDuties', 'status', 'waterPerDay', 'earned', ...
-                       'supplement', 'received'};
-                   
-        researcher = fetch(lab.User*lab.UserLab*lab.UserProtocol*lab.Lab*lab.UserSecondaryContact ...
-                           & struct('user_id', 'edward'), '*');  %70ms
-        %%%    
-        
     end
     
     %----- From DataJoint Database, reconstruct the struct of researcher
@@ -5339,24 +5311,22 @@ classdef AnimalDatabase < handle
         obj.(['tmpl' field{:}]) = tmpl;
       end
 
-      
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %                             And now the same in Datajoint
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
     %First the duty Roaster
+    R = lab.DutyRoaster;
+    latest_roaster = R.fetch('monday_duty', 'tuesday_duty', 'wednesday_duty', 'thursday_duty', 'friday_duty', 'saturday_duty', 'sunday_duty', 'ORDER BY duty_roaster_date DESC LIMIT 1');
     obj.DutyRoster = struct();
     for days_idx = 1:length(obj.DAYS_OF_WEEK)
         obj.DutyRoster(days_idx).Day = obj.DAYS_OF_WEEK{days_idx};
-        obj.DutyRoster(days_idx).Technician = fetchn(lab.DutyRoaster, [obj.DAYS_OF_WEEK_FULL{days_idx}, '_duty'] );
+        obj.DutyRoster(days_idx).Technician = latest_roaster.([obj.DAYS_OF_WEEK_FULL{days_idx}, '_duty']);
     end
-    overview_dj.DutyRoster = obj.DutyRoster;
-      
+    overview_dj.DutyRostern = obj.DutyRoster;
+
+    
     %Then the Technicians
     query = lab.User() & 'primary_tech != "N/A"';
     [full_name, user_id, presence, day_cutoff_time, phone, carrier, email, slack, contact_via, slack_webhook, primary_tech] = ...
         query.fetchn('full_name', 'user_id', 'presence', 'day_cutoff_time', ...
-                     'phone', 'carrier', 'email', 'slack', 'contact_via', 'slack_webhook', 'primary_tech');
+                     'phone', 'mobile_carrier', 'email', 'slack', 'contact_via', 'slack_webhook', 'primary_tech');
     obj.Technicians =  struct('Name', full_name,        ...
                             'ID', user_id,         ...
                       'Presence', presence,         ...
@@ -5376,9 +5346,9 @@ classdef AnimalDatabase < handle
          phone, carrier, email, slack, contact_via, ...
          tech_responsibility, slack_webhook] = ...
             query.fetchn('full_name', 'user_id', 'presence', 'day_cutoff_time', ...
-                         'phone', 'carrier', 'email', 'slack', 'contact_via', ...
+                         'phone', 'mobile_carrier', 'email', 'slack', 'contact_via', ...
                          'tech_responsibility', 'slack_webhook');
-     obj.Researchers =  struct('Name', full_name,                   ...
+     obj.Researchers =  struct('Name', full_name,               ...
                             'ID', user_id,                      ...
                       'Presence', presence,                     ...
                  'DayCutoffTime', day_cutoff_time,              ...
@@ -5397,7 +5367,7 @@ classdef AnimalDatabase < handle
       for l_idx = 1:length(user_ids)
         obj.Researchers(l_idx).PI = PIs(l_idx);
         obj.Researchers(l_idx).SecondaryContact = secondary_contacts(l_idx);
-        obj.Researchers(l_idx).animals = obj.getAnimalsDJ(user_id{l_idx});
+        obj.Researchers(l_idx).animals = obj.getAnimalsDJ(user_id{l_idx});              %FIXME
       end
       
       overview_dj.Researchers = obj.Researchers';
@@ -5466,8 +5436,9 @@ classdef AnimalDatabase < handle
         animals{iID} = obj.getAnimalsDJ(researcherID{iID});
         disp('getAnimalsDJ executed - with datajoint backend.');
         
-        %% Store animal's identification image for tooltips
-        researchers{iID}  = obj.getResearcherDJ(researcherID{iID}, true);
+        researchers{iID}  = obj.getResearcherDJ(researcherID{iID}, false);
+        researchers{iID}.animals = animals{iID};
+        
       end
       
       %% Convenience for return type
@@ -5563,11 +5534,11 @@ classdef AnimalDatabase < handle
         %                             And now the same in Datajoint
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
-        query = action.WaterAdministration() & ['subject_id = "', animalID{iAni}, '"'];
+        query = action.WaterAdministration() & ['subject_fullname = "', animalID{iAni}, '"'];
         
         %Get the SQL dates in a form that SueAnns Code can understand
         dates = fetchn(query, 'administration_date');
-        foo = @(st) datevec(st)*[[1,0,0,0,0,0];[0,1,0,0,0,0];[0,0,1,0,0,0]]';
+        foo = @(st) datevec(st)*[[1,0,0,0,0,0];[0,1,0,0,0,0];[0,0,1,0,0,0]]';  %%% CHANGEME ,datevec wants 'yyyy-mm-dd'
         dates_sa = cellfun(foo, dates, 'UniformOutput', false);
 
         dj_tmp = struct('date', dates_sa,  ...
@@ -5577,12 +5548,12 @@ classdef AnimalDatabase < handle
         
         for log_idx = 1:length(dj_tmp)
             
-            query = action.Weighing & ['subject_id = "', animalID{iAni}, '" AND CAST(WEIGHING_TIME AS DATE) = "' dates{log_idx} '"' ];
+            query = action.Weighing & ['subject_fullname = "', animalID{iAni}, '" AND CAST(WEIGHING_TIME AS DATE) = "' dates{log_idx} '"' ];
             if ~isempty(query.fetch())
                 [dj_tmp(log_idx).weight, dj_tmp(log_idx).weighPerson, dj_tmp(log_idx).weighTime, dj_tmp(log_idx).weighLocation, dj_tmp(log_idx).comments] =  ...
                 fetchn(query, 'weight', 'weigh_person','weighing_time','location','weight_notice');
                 % To transform the full weigh time into HH-MM in vector
-                dj_tmp(log_idx).weighTime = datevec(dj_tmp(log_idx).weighTime)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';
+                dj_tmp(log_idx).weighTime = datevec(dj_tmp(log_idx).weighTime)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';   %%% CHANGEME ,datevec wants 'yyyy-mm-dd'
             else
                 dj_tmp(log_idx).weight        = [];
                 dj_tmp(log_idx).weighPerson   = [];
@@ -5591,7 +5562,7 @@ classdef AnimalDatabase < handle
                 dj_tmp(log_idx).comments      = [];
             end
             
-            query = subject.HealthStatus & ['subject_id = "', animalID{iAni}, '" AND STATUS_DATE = "' dates{log_idx} '"' ];
+            query = subject.HealthStatus & ['subject_fullname = "', animalID{iAni}, '" AND STATUS_DATE = "' dates{log_idx} '"' ];
             if isempty(query.fetch())
                 [normal_data, dj_tmp(log_idx).bcs, dj_tmp(log_idx).activity, dj_tmp(log_idx).posture, dj_tmp(log_idx).eatDrink, dj_tmp(log_idx).turgor, dj_tmp(log_idx).healthNotice] =  ...
                 fetch1(query, 'normal_behavior', 'bcs','activity','posture_grooming','eat_drink', 'turgor', 'comments');
@@ -5606,7 +5577,7 @@ classdef AnimalDatabase < handle
                 dj_tmp(log_idx).healthNotice = [];
             end
             
-            query = action.Notification & ['subject_id = "', animalID{iAni}, '" AND NOTIFICATION_DATE = "' dates{log_idx} '"' ];
+            query = action.Notification & ['subject_fullname = "', animalID{iAni}, '" AND NOTIFICATION_DATE = "' dates{log_idx} '"' ];
             if ~isempty(query.fetch())
                 [dj_tmp(log_idx).cageNotice, dj_tmp(log_idx).healthNotice, dj_tmp(log_idx).weightNotice] =  ...
                 fetch1(query, 'cage_notice','health_notice', 'weight_notice');
@@ -5617,7 +5588,7 @@ classdef AnimalDatabase < handle
             end
             
             % Rrformat the database-actions to sueanns nx2 cell arrays
-            query = action.ActionItem & ['subject_id = "', animalID{iAni}, '" AND ACTION_DATE = "' dates{log_idx} '"' ];
+            query = action.ActionItem & ['subject_fullname = "', animalID{iAni}, '" AND ACTION_DATE = "' dates{log_idx} '"' ];
             if ~isempty(query.fetch())
                 action_data = fetch(query, 'action_id', 'action');
                 action_tmp = cell(length(action_data),2);
@@ -5630,7 +5601,7 @@ classdef AnimalDatabase < handle
                 dj_tmp(log_idx).actions = [];
             end
             
-            query = acquisition.SessionStatistics & ['subject_id = "', animalID{iAni}, '" AND SESSION_DATE = "' dates{log_idx} '"' ];
+            query = acquisition.SessionStatistics & ['subject_fullname = "', animalID{iAni}, '" AND SESSION_DATE = "' dates{log_idx} '"' ];
             if ~isempty(query.fetch())
                 [dj_tmp(log_idx).trialType, dj_tmp(log_idx).choice, dj_tmp(log_idx).mazeID, dj_tmp(log_idx).numTowersR, dj_tmp(log_idx).numTowersL] =  ...
                 fetch1(query, 'rewarded_side', 'chosen_side','maze_id','num_towers_r','num_towers_l');
@@ -5644,12 +5615,12 @@ classdef AnimalDatabase < handle
                 dj_tmp(log_idx).numTowersR = dj_tmp(log_idx).numTowersR';
                 dj_tmp(log_idx).numTowersL = dj_tmp(log_idx).numTowersL';
                 
-                query_session = acquisition.Session & ['subject_id = "', animalID{iAni}, '" AND SESSION_DATE = "' dates{log_idx} '"' ];
+                query_session = acquisition.Session & ['subject_fullname = "', animalID{iAni}, '" AND SESSION_DATE = "' dates{log_idx} '"' ];
                 [dj_tmp(log_idx).trainStart, dj_tmp(log_idx).trainEnd, dj_tmp(log_idx).rigName, dj_tmp(log_idx).performance, dj_tmp(log_idx).mainMazeID, dj_tmp(log_idx).versionInfo, dj_tmp(log_idx).behavProtocol, dj_tmp(log_idx).stimulusBank, dj_tmp(log_idx).stimulusSet, dj_tmp(log_idx).squal] =  ...
                 fetch1(query_session, 'session_start_time', 'session_end_time','location','session_performance','level','version_info','protocol','stimulus_bank','stimulus_set', 'ball_squal');
            
-                dj_tmp(log_idx).trainStart = datevec(dj_tmp(log_idx).trainStart)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';
-                dj_tmp(log_idx).trainEnd = datevec(dj_tmp(log_idx).trainEnd)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';
+                dj_tmp(log_idx).trainStart = datevec(dj_tmp(log_idx).trainStart)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';   %%% CHANGEME ,datevec wants 'yyyy-mm-dd'
+                dj_tmp(log_idx).trainEnd = datevec(dj_tmp(log_idx).trainEnd)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';   %%% CHANGEME ,datevec wants 'yyyy-mm-dd'
             else
                 dj_tmp(log_idx).trialType     = [];
                 dj_tmp(log_idx).choice        = [];
