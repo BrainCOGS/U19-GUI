@@ -5449,11 +5449,11 @@ classdef AnimalDatabase < handle
 
   end
     
-    function [researcher, refreshed, template] = test(obj, researcherID)
-        [researcher, refreshed] = obj.pullLogsStructure(researcherID);
-        template = obj.tmplAnimal;
-    end
-    
+%     function [researcher, refreshed, template] = test(obj, researcherID)
+%         [researcher, refreshed] = obj.pullLogsStructure(researcherID);
+%         template = obj.tmplAnimal;
+%     end
+
     %----- Read daily log information given a single researcher and possibly multiple animals (default all)
     function [logs, animals, template] = pullDailyLogs(obj, researcherID, animalID)
       %% Default arguments
@@ -5464,26 +5464,8 @@ classdef AnimalDatabase < handle
         singleton         = true;
         animalID          = {animalID};
       end
-      
-%       %% Setup data source
-%       [researcher, refreshed] = obj.pullLogsStructure(researcherID);
-%       database            = researcher.wateringLogs;
-%       where               = 'watering logs';
-%       dataRow             = 2;      % right after header
-%       template            = obj.tmplDailyInfo;
       template = obj.getTemplateDJ('DailyInfo');
-%       
-%       %% Sanity check that the requested animals exist in the databasereadfromDatabase 
-%       if ~isstruct(researcher.animals)
-%         obj.pullAnimalList(researcherID);
-%         researcher        = obj.findResearcher(researcherID);
-%       end
-%       if isempty(animalID)
-%         animalID          = {researcher.animals.ID};
-%       elseif any(~ismember(lower(animalID), lower({researcher.animals.ID})))
-%         invalidID         = animalID(~ismember(lower(animalID), lower({researcher.animals.ID})));
-%         error('AnimalDatabase:pullDailyLogs', 'Requested animal(s) for %s do not exist: %s', researcher.Name, strjoin(invalidID, ', '));
-%       end
+
 
       %% Sanity check with DataJoint DB instead %%
       
@@ -5492,156 +5474,222 @@ classdef AnimalDatabase < handle
           error('AnimalDatabase:pullDailyLogs', 'Requested researcher %s do not exist.', researcherID)
       end
       
-      all_subjs = fetchn(subject.Subject & struct('user_id', researcherID), 'subject_id');
+      all_subjs = fetchn(subject.Subject & struct('user_id', researcherID), 'subject_fullname');
       if isempty(animalID)
         animalID = all_subjs;
       elseif any(~ismember(animalID, all_subjs))
         invalidID = animalID(~ismember(animalID, all_subjs));
         error('AnimalDatabase:pullDailyLogs', 'Requested animal(s) for %s do not exist: %s', researcherID, strjoin(invalidID, ', '));
       end
-       
-      %% Loop through animals
-%       logs                = cell(size(animalID));
+      
+      
+      %% Get all relevant data from the database
+      
+      water_status = fetch(action.WaterAdministration * subject.Subject & struct('user_id', researcherID), ...
+            'subject_fullname', 'administration_date', 'earned', 'supplement', 'received');
+      weight_status = fetch(action.Weighing * proj(subject.Subject, 'user_id') & struct('user_id', researcherID), ...
+            'weight', 'weigh_person','weighing_time','location','weight_notice');      
+      health_status = fetch(subject.HealthStatus * subject.Subject & struct('user_id', researcherID), ...
+            'normal_behavior', 'bcs','activity','posture_grooming','eat_drink', 'turgor', 'comments'); 
+      action_status = fetch(action.Notification * subject.Subject & struct('user_id', researcherID), ...
+            'cage_notice','health_notice', 'weight_notice');
+      actionitem_status = fetch(action.ActionItem * subject.Subject & struct('user_id', researcherID), ...
+            'action_id', 'action');
+      session_status = fetch(acquisition.Session * subject.Subject & struct('user_id', researcherID), ...
+            'session_start_time', 'session_end_time', 'session_location', 'session_performance', 'level', 'protocol', 'stimulus_bank', 'set_id');
+      sessiondetails_status = fetch(behavior.TowersSession * subject.Subject & struct('user_id', researcherID), ...
+            'rewarded_side', 'chosen_side','maze_id','num_towers_r','num_towers_l', 'ball_squal'); 
+
+      %% Reorganize the data to the AnimalDatabaseFormat
+      
       logs_dj             = cell(size(animalID));
       animals             = cell(size(animalID));
-      
+            
       % get researcher information from DataJoint database
       researcher = AnimalDatabase.getResearcherDJ(researcherID);
       for iAni = 1:numel(animalID)
         animal            = researcher.animals( strcmpi({researcher.animals.ID}, animalID{iAni}) );
         animals{iAni}     = animal;
-        if numel(animal) > 1
-          error('AnimalDatabase:pullDailyLogs', 'Multiple animal list entries found for animal %s of researcher %s.', animalID{iAni}, researcher.Name);
-        end
-        
-        %% Try to find the daily sheet for this animal with cached info if possible
-%         [sheetID{iAni}, researcher, refresh2]               ...
-%                           = obj.findDailyLogsID(researcher, animalID{iAni}, ~refreshed, where);
-%         refreshed         = refreshed || refresh2;
-%         if isempty(sheetID{iAni})
-%           continue;
-%         end
 
-        %% If sheet is empty, populate from template
-%         data              = obj.readFromDatabase(database, sheetID{iAni}, where, researcher.Name);
-%         if isempty(data)
-%         else
-%           logs{iAni}      = obj.parseFromDatabase(template, dataRow, data, sheetID{iAni}, where, researcher.Name);
-%         end
-%           
-        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %                             And now the same in Datajoint
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        
-        query = action.WaterAdministration() & ['subject_fullname = "', animalID{iAni}, '"'];
-        
-        %Get the SQL dates in a form that SueAnns Code can understand
-        dates = fetchn(query, 'administration_date');
-        foo = @(st) datevec(st)*[[1,0,0,0,0,0];[0,1,0,0,0,0];[0,0,1,0,0,0]]';  %%% CHANGEME ,datevec wants 'yyyy-mm-dd'
-        dates_sa = cellfun(foo, dates, 'UniformOutput', false);
+        %for this animal, collect the relvant entries, ordered by date
+        dj_tmp = struct('date',  [],  ...
+                'earned'      ,  [],  ...
+                'supplement'  ,  [],  ...
+                'received'    ,  [],  ...
+                'weight'      ,  [],  ...
+                'cageNotice'  ,  [],  ...
+                'healthNotice',  [],  ...
+                'weightNotice',  [],  ...
+                'normal'      ,  [],  ...
+                'bcs'         ,  [],  ...
+                'activity'    ,  [],  ...
+                'posture'     ,  [],  ...
+                'eatDrink'    ,  [],  ...
+                'turgor'      ,  [],  ...
+                'weighPerson' ,  [],  ...
+                'weightTime'  ,  [],  ...
+                'weighLocation', [],  ...
+                'trainStart'  ,  [],  ...
+                'trainEnd'    ,  [],  ...
+                'rigName'     ,  [],  ...
+                'performance' ,  [],  ...
+                'mainMazeID'  ,  [],  ...
+                'behavProtocol', [],  ...
+                'actions'     ,  [],  ...
+                'comments'    ,  [],  ...
+                'trialType'   ,  [],  ...
+                'choice'      ,  [],  ...
+                'mazeID'      ,  [],  ...
+                'numTowersR'  ,  [],  ...
+                'numTowersL'  ,  [],  ...
+                'versionInfo' ,  [],  ...
+                'stimulusBank',  [],  ...
+                'stimulusSet' ,  [],  ...
+                'squall'      ,  []);
 
-        dj_tmp = struct('date', dates_sa,  ...
-                      'earned', num2cell(fetchn(query, 'earned')),               ...
-                  'supplement', num2cell(fetchn(query, 'supplement')),           ...
-                    'received', num2cell(fetchn(query, 'received')));
-        
-        for log_idx = 1:length(dj_tmp)
-            
-            query = action.Weighing & ['subject_fullname = "', animalID{iAni}, '" AND CAST(WEIGHING_TIME AS DATE) = "' dates{log_idx} '"' ];
-            if ~isempty(query.fetch())
-                [dj_tmp(log_idx).weight, dj_tmp(log_idx).weighPerson, dj_tmp(log_idx).weighTime, dj_tmp(log_idx).weighLocation, dj_tmp(log_idx).comments] =  ...
-                fetchn(query, 'weight', 'weigh_person','weighing_time','location','weight_notice');
-                % To transform the full weigh time into HH-MM in vector
-                dj_tmp(log_idx).weighTime = datevec(dj_tmp(log_idx).weighTime)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';   %%% CHANGEME ,datevec wants 'yyyy-mm-dd'
-            else
-                dj_tmp(log_idx).weight        = [];
-                dj_tmp(log_idx).weighPerson   = [];
-                dj_tmp(log_idx).weighTime     = [];
-                dj_tmp(log_idx).weighLocation = [];
-                dj_tmp(log_idx).comments      = [];
-            end
-            
-            query = subject.HealthStatus & ['subject_fullname = "', animalID{iAni}, '" AND STATUS_DATE = "' dates{log_idx} '"' ];
-            if isempty(query.fetch())
-                [normal_data, dj_tmp(log_idx).bcs, dj_tmp(log_idx).activity, dj_tmp(log_idx).posture, dj_tmp(log_idx).eatDrink, dj_tmp(log_idx).turgor, dj_tmp(log_idx).healthNotice] =  ...
-                fetch1(query, 'normal_behavior', 'bcs','activity','posture_grooming','eat_drink', 'turgor', 'comments');
-                dj_tmp(log_idx).normal = YesNoMaybe(normal_data);
-            else
-                dj_tmp(log_idx).normal       = [];
-                dj_tmp(log_idx).bcs          = [];
-                dj_tmp(log_idx).activity     = [];   
-                dj_tmp(log_idx).posture      = [];
-                dj_tmp(log_idx).eatDrink     = [];
-                dj_tmp(log_idx).turgor       = [];
-                dj_tmp(log_idx).healthNotice = [];
-            end
-            
-            query = action.Notification & ['subject_fullname = "', animalID{iAni}, '" AND NOTIFICATION_DATE = "' dates{log_idx} '"' ];
-            if ~isempty(query.fetch())
-                [dj_tmp(log_idx).cageNotice, dj_tmp(log_idx).healthNotice, dj_tmp(log_idx).weightNotice] =  ...
-                fetch1(query, 'cage_notice','health_notice', 'weight_notice');
-            else
-                dj_tmp(log_idx).cageNotice   = [];
-                dj_tmp(log_idx).healthNotice = [];
-                dj_tmp(log_idx).weightNotice = [];
-            end
-            
-            % Rrformat the database-actions to sueanns nx2 cell arrays
-            query = action.ActionItem & ['subject_fullname = "', animalID{iAni}, '" AND ACTION_DATE = "' dates{log_idx} '"' ];
-            if ~isempty(query.fetch())
-                action_data = fetch(query, 'action_id', 'action');
-                action_tmp = cell(length(action_data),2);
-                for i=1:length(action_data)
-                    action_tmp{i,1} = action_data(i).action_id;
-                    action_tmp{i,2} = action_data(i).action;
+        % Add water info
+        indices = find(strcmp({water_status.subject_fullname}, animal.ID));
+        relevant_water_info = water_status(indices);
+        for i = 1:length(indices)
+            dv = datevec(relevant_water_info(i).administration_date, 'yyyy-mm-dd');
+            if length(dj_tmp(1).date) > 0
+                compare_dates = ismember(reshape([dj_tmp.date], 3, length(dj_tmp))', dv(1:3), 'rows');
+                log_idx = find(compare_dates);  
+                if length(log_idx) == 0
+                    log_idx = length(dj_tmp) + 1;
+                    dj_tmp(log_idx).date = dv(1:3);
                 end
-                dj_tmp(log_idx).actions = action_tmp;
             else
-                dj_tmp(log_idx).actions = [];
+                log_idx = 1;
+                dj_tmp(log_idx).date = dv(1:3);
             end
-            
-            query = acquisition.SessionStatistics & ['subject_fullname = "', animalID{iAni}, '" AND SESSION_DATE = "' dates{log_idx} '"' ];
-            if ~isempty(query.fetch())
-                [dj_tmp(log_idx).trialType, dj_tmp(log_idx).choice, dj_tmp(log_idx).mazeID, dj_tmp(log_idx).numTowersR, dj_tmp(log_idx).numTowersL] =  ...
-                fetch1(query, 'rewarded_side', 'chosen_side','maze_id','num_towers_r','num_towers_l');
-                
-                % Database has L/R - this code has 1/2. Database has
-                % columns, this code has rows...
-                foo = @(s) strcmp(s,'R') + 1;
-                dj_tmp(log_idx).trialType = cellfun(foo, dj_tmp(log_idx).trialType)';
-                dj_tmp(log_idx).choice = cellfun(foo, dj_tmp(log_idx).choice)';
-                dj_tmp(log_idx).mazeID = dj_tmp(log_idx).mazeID';
-                dj_tmp(log_idx).numTowersR = dj_tmp(log_idx).numTowersR';
-                dj_tmp(log_idx).numTowersL = dj_tmp(log_idx).numTowersL';
-                
-                query_session = acquisition.Session & ['subject_fullname = "', animalID{iAni}, '" AND SESSION_DATE = "' dates{log_idx} '"' ];
-                [dj_tmp(log_idx).trainStart, dj_tmp(log_idx).trainEnd, dj_tmp(log_idx).rigName, dj_tmp(log_idx).performance, dj_tmp(log_idx).mainMazeID, dj_tmp(log_idx).versionInfo, dj_tmp(log_idx).behavProtocol, dj_tmp(log_idx).stimulusBank, dj_tmp(log_idx).stimulusSet, dj_tmp(log_idx).squal] =  ...
-                fetch1(query_session, 'session_start_time', 'session_end_time','location','session_performance','level','version_info','protocol','stimulus_bank','stimulus_set', 'ball_squal');
-           
-                dj_tmp(log_idx).trainStart = datevec(dj_tmp(log_idx).trainStart)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';   %%% CHANGEME ,datevec wants 'yyyy-mm-dd'
-                dj_tmp(log_idx).trainEnd = datevec(dj_tmp(log_idx).trainEnd)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]';   %%% CHANGEME ,datevec wants 'yyyy-mm-dd'
-            else
-                dj_tmp(log_idx).trialType     = [];
-                dj_tmp(log_idx).choice        = [];
-                dj_tmp(log_idx).mazeID        = [];
-                dj_tmp(log_idx).numTowersR    = [];
-                dj_tmp(log_idx).numTowersL    = [];
-                dj_tmp(log_idx).trainStart    = []; 
-                dj_tmp(log_idx).trainEnd      = [];
-                dj_tmp(log_idx).rigName       = [];
-                dj_tmp(log_idx).performance   = [];
-                dj_tmp(log_idx).mainMazeID    = []; 
-                dj_tmp(log_idx).versionInfo   = [];
-                dj_tmp(log_idx).behavProtocol = []; 
-                dj_tmp(log_idx).stimulusBank  = []; 
-                dj_tmp(log_idx).stimulusSet   = []; 
-                dj_tmp(log_idx).squal         = [];
-            end
+            dj_tmp(log_idx).earned      = relevant_water_info(i).earned;
+            dj_tmp(log_idx).supplement  = relevant_water_info(i).supplement;
+            dj_tmp(log_idx).received    = relevant_water_info(i).received;
         end
-            
-        logs_dj{iAni} = dj_tmp';
         
+        % Add weight info
+        indices = find(strcmp({weight_status.subject_fullname}, animal.ID));
+        relevant_weight_info = weight_status(indices);
+        for i = 1:length(indices)
+            dv = datevec(relevant_weight_info(i).weighing_time(1:10), 'yyyy-mm-dd');
+            compare_dates = ismember(reshape([dj_tmp.date], 3, length(dj_tmp))', dv(1:3), 'rows');
+            log_idx = find(compare_dates);  
+            if length(log_idx) == 0
+                log_idx = length(dj_tmp) + 1;
+                dj_tmp(log_idx).date = dv(1:3);
+            end
+            dj_tmp(log_idx).weight        = relevant_weight_info(i).weight;
+            dj_tmp(log_idx).weighPerson   = relevant_weight_info(i).weigh_person;
+            dj_tmp(log_idx).weighTime     = relevant_weight_info(i).weighing_time;
+            dj_tmp(log_idx).weighLocation = relevant_weight_info(i).location;
+            dj_tmp(log_idx).comments      = relevant_weight_info(i).weight_notice;
+        end
+        
+        % Add health info
+        indices = find(strcmp({health_status.subject_fullname}, animal.ID));
+        relevant_health_info = health_status(indices);
+        for i = 1:length(indices)
+            dv = datevec(relevant_health_info(i).status_date, 'yyyy-mm-dd');
+            compare_dates = ismember(reshape([dj_tmp.date], 3, length(dj_tmp))', dv(1:3), 'rows');
+            log_idx = find(compare_dates);  
+            if length(log_idx) == 0
+                log_idx = length(dj_tmp) + 1;
+                dj_tmp(log_idx).date = dv(1:3);
+            end
+            dj_tmp(log_idx).normal       = YesNoMaybe(relevant_health_info(i).normal_behavior) ;
+            dj_tmp(log_idx).bcs          = relevant_health_info(i).bcs;
+            dj_tmp(log_idx).activity     = relevant_health_info(i).activity;   
+            dj_tmp(log_idx).posture      = relevant_health_info(i).posture_grooming;
+            dj_tmp(log_idx).eatDrink     = relevant_health_info(i).eat_drink;
+            dj_tmp(log_idx).turgor       = relevant_health_info(i).turgor;
+            dj_tmp(log_idx).healthNotice = relevant_health_info(i).comments;
+        end
+        
+        % Add notifications
+        indices = find(strcmp({action_status.subject_fullname}, animal.ID));
+        relevant_notification_info = action_status(indices);
+        for i = 1:length(indices)
+            dv = datevec(relevant_notification_info(i).notification_date, 'yyyy-mm-dd');
+            compare_dates = ismember(reshape([dj_tmp.date], 3, length(dj_tmp))', dv(1:3), 'rows');
+            log_idx = find(compare_dates);  
+            if length(log_idx) == 0
+                log_idx = length(dj_tmp) + 1;
+                dj_tmp(log_idx).date = dv(1:3);
+            end
+            dj_tmp(log_idx).cageNotice   = relevant_notification_info(i).cage_notice;
+            dj_tmp(log_idx).healthNotice = relevant_notification_info(i).health_notice;
+            dj_tmp(log_idx).weightNotice = relevant_notification_info(i).cage_notice;
+        end
+        
+        % Add action items.
+        % Note: there can be multiple actions on one day.
+        % Therefore: all actions are collected into a "action_tmp" array and
+        %            added to the field of dj_tmp.
+        indices = find(strcmp({actionitem_status.subject_fullname}, animal.ID));
+        relevant_actions_info = actionitem_status(indices);
+        for i = 1:length(indices)
+            dv = datevec(relevant_actions_info(i).action_date, 'yyyy-mm-dd');
+            compare_dates = ismember(reshape([dj_tmp.date], 3, length(dj_tmp))', dv(1:3), 'rows');
+            log_idx = find(compare_dates);  
+            if length(log_idx) == 0
+                log_idx = length(dj_tmp) + 1;
+                dj_tmp(log_idx).date = dv(1:3);
+            end
+            Nactions = length(dj_tmp(log_idx).actions);                     % pull actions
+            if Nactions > 0
+                action_tmp = dj_tmp(log_idx).actions;
+            else
+                action_tmp = cell(1,2);
+            end
+            action_tmp{Nactions+1,1} = relevant_actions_info(i).action_id;  % append new action    
+            action_tmp{Nactions+1,2} = relevant_actions_info(i).action;
+            dj_tmp(log_idx).actions  = action_tmp;                          % save updated actions
+        end
+        
+      
+        % Add session statistics
+        indices = find(strcmp({session_status.subject_fullname}, animal.ID));
+        relevant_session_info = session_status(indices);
+        for i = 1:length(indices)
+            dv = datevec(relevant_session_info(i).session_date, 'yyyy-mm-dd');
+            compare_dates = ismember(reshape([dj_tmp.date], 3, length(dj_tmp))', dv(1:3), 'rows');
+            log_idx = find(compare_dates);  
+            if length(log_idx) == 0
+                log_idx = length(dj_tmp) + 1;
+                dj_tmp(log_idx).date = dv(1:3);
+            end            
+            dj_tmp(log_idx).trainStart    = relevant_session_info(i).session_start_time;   %datevec(dj_tmp(log_idx).trainStart)*[[0,0,0,1,0,0];[0,0,0,0,1,0]]'
+            dj_tmp(log_idx).trainEnd      = relevant_session_info(i).session_end_time;
+            dj_tmp(log_idx).rigName       = relevant_session_info(i).session_location;
+            dj_tmp(log_idx).performance   = relevant_session_info(i).session_performance;
+            dj_tmp(log_idx).mainMazeID    = relevant_session_info(i).level; 
+            dj_tmp(log_idx).behavProtocol = relevant_session_info(i).protocol; 
+            dj_tmp(log_idx).stimulusBank  = relevant_session_info(i).stimulus_bank;
+        end
+        
+        
+        % Add session details
+        indices = find(strcmp({sessiondetails_status.subject_fullname}, animal.ID));
+        relevant_sessiondetails_info = sessiondetails_status(indices);
+        for i = 1:length(indices)
+            dv = datevec(relevant_sessiondetails_info(i).session_date, 'yyyy-mm-dd');
+            compare_dates = ismember(reshape([dj_tmp.date], 3, length(dj_tmp))', dv(1:3), 'rows');
+            log_idx = find(compare_dates);  
+            if length(log_idx) == 0
+                log_idx = length(dj_tmp) + 1;
+                dj_tmp(log_idx).date = dv(1:3);
+            end            
+            dj_tmp(log_idx).trialType     = relevant_sessiondetails_info(1).rewarded_side;
+            dj_tmp(log_idx).choice        = relevant_sessiondetails_info(i).chosen_side;
+            dj_tmp(log_idx).mazeID        = relevant_sessiondetails_info(i).maze_id;
+            dj_tmp(log_idx).numTowersR    = relevant_sessiondetails_info(i).num_towers_r;
+            dj_tmp(log_idx).numTowersL    = relevant_sessiondetails_info(i).num_towers_l;
+            dj_tmp(log_idx).versionInfo   = []; %FIXME
+            dj_tmp(log_idx).stimulusSet   = []; %FIXME
+            dj_tmp(log_idx).squal         = relevant_sessiondetails_info(i).ball_squal;
+        end
+        logs_dj{iAni} = dj_tmp';
       end
       
       logs = logs_dj;
