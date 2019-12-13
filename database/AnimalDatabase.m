@@ -5191,7 +5191,7 @@ disp('done')
         obj.DutyRoster(days_idx).Day = obj.DAYS_OF_WEEK{days_idx};
         obj.DutyRoster(days_idx).Technician = latest_roaster.([obj.DAYS_OF_WEEK_FULL{days_idx}, '_duty']);
     end
-    overview_dj.DutyRostern = obj.DutyRoster;
+    overview_dj.DutyRoster = obj.DutyRoster;
     
     %Then the Technicians
     query = lab.User() & 'primary_tech != "N/A"';
