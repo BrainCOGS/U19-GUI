@@ -54,8 +54,7 @@
 %     '@X'  = a scalar struct with simple numeric fields, as defined in the template spreadsheet
 %     '*X'  = a string that can be populated either free-form or from tmplX.value
 % The following are specially parsed formats:
-%     'DATE'  = [year, month, day] via the Matlab interface, 'month/day/year' via the Google web
-%               interface (this is translated upon pull/push of data)
+%     'DATE'  = [year, month, day] via the Matlab interface, 'month/day/year'
 %     'TIME'  = HHMM in 24-hour format; note that this is stored as a 1-4 digit number
 %     'IMAGE' = an RGB image encoded in printable ASCII characters via base64 encoding
 %
@@ -66,8 +65,7 @@
 % database a default value unless it has been approved by the user. Calculated quantities have
 % almost the same treatment --- typically they are calculated in a user session, in which case
 % they use the current values of whatever other variables that they depend on, and once written to
-% the database they will not be recalculated in the future. There is no mechanism for redacting logs
-% short of via the Google spreadsheet web interface.
+% the database they will not be recalculated in the future.
 %
 %
 % ------------------------------
@@ -82,18 +80,9 @@ classdef AnimalDatabase < handle
   
   %_________________________________________________________________________________________________
   properties (Constant)
-%     CLIENT_ID             = getfield(load('database_config.mat'), 'client_id')
-%     CLIENT_SECRET         = getfield(load('database_config.mat'), 'client_secret')
 
     DATAJOINT_STATUS      = getdjconnection();
 
-%     GOOGLE_URL            = 'https://www.google.com'
-%     GOOGLESHEETS_URL      = 'https://docs.google.com/spreadsheets/d'
-%     EDIT_FORMAT           = '%s/%s/edit#gid=%s'
-%     EXPORT_FORMAT         = '%s/%s/export?format=csv&gid=%s'
-    
-%     FIRST_SHEET           = '0'
-%     DATABASE_ID           = getfield(load('database_config.mat'), 'database_id')
     UPDATE_PERIOD         = 10  %TIME FOR AUTOUPDATE - UNIT???
     UPDATE_PERIOD_SCALE   = 0.3
     NUM_POLLS_SCALE       = 3
@@ -141,7 +130,6 @@ classdef AnimalDatabase < handle
     GUI_MONITOR           = AnimalDatabase.getGUIMonitor()
     GUI_IS_SMALLSCREEN    = AnimalDatabase.checkMonitorSize()
     GUI_POSITION          = [0 45 -1 -45]
-%     GUI_POSITION          = [0 45 1200 800]
     GUI_FONT              = conditional(AnimalDatabase.GUI_IS_SMALLSCREEN, 9, 14)
     GUI_BTNSIZE           = conditional(AnimalDatabase.GUI_IS_SMALLSCREEN, 30, 40)
     GUI_BORDER            = conditional(AnimalDatabase.GUI_IS_SMALLSCREEN, 2, 5)
@@ -299,7 +287,7 @@ classdef AnimalDatabase < handle
     %----- From DataJoint Database, reconstruct the vector of struct of animals for a given researcher
     function animals_dj = getAnimalsDJ(researcherID, add_imagefile)
         if nargin < 2 || isempty(add_imagefile)
-            add_imagefile = true;
+            add_imagefile = false;              %CHECKME! With new database, no need to save image on hd?
         end
         
         if add_imagefile
@@ -315,7 +303,9 @@ classdef AnimalDatabase < handle
         subject_info    = subjects.fetch('subject_fullname', 'head_plate_mark', 'location', 'protocol', 'sex', 'dob', 'line', 'initial_weight');
         cageinfo        = fetch(subjects * subject.CagingStatus, 'subject_fullname', 'cage');    
         subjectstatus   = fetch(subjects * action.SubjectStatus, 'subject_fullname', 'subject_status', 'schedule', 'effective_date', 'water_per_day');       
-
+        actionManual_info = fetch( subjects * subject.SubjectActionManual, 'subject_fullname', 'act_item');
+        actionAutomatic_info = fetch( subjects * subject.SubjectActionAutomatic, 'subject_fullname', 'notification_date', 'notification_message');
+        
         % This is queried ONLY for the latest entry 
         water_info      = fetch( ...
             aggr(subjects, action.WaterAdministration, 'MAX(administration_date)->administration_date') * action.WaterAdministration, ...
@@ -326,20 +316,16 @@ classdef AnimalDatabase < handle
         session_info    = fetch( ...
             aggr(subjects, acquisition.Session, 'MAX(session_date)->session_date')*acquisition.Session, ...
             'subject_fullname', 'session_start_time', 'session_end_time', 'session_performance', 'level');
-        actionitem_info = fetch( ...
-            aggr(subjects, action.ActionItem, 'MAX(action_date)->action_date')*action.ActionItem, ...
-            'subject_fullname', 'action');
-        
-        
+
         % rename fields
         animals_dj = cell2struct( struct2cell(subject_info), ...
             {'ID', 'sex', 'dob', 'image', 'whereAmI', 'protocol', 'genotype', 'initWeight'});
                          
         % Data has to be reorganized to fit into the standard AnimalDB
         % format - but not further querying is done.
+        subjectnamelist = {subjectstatus.subject_fullname};
         for subj_idx = 1:length(subject_info)
-tic
-toc
+
             subj = subject_info(subj_idx).subject_fullname;
             animals_dj(subj_idx).sex = Sex(subject_info(subj_idx).sex);
 
@@ -358,15 +344,13 @@ toc
                 animals_dj(subj_idx).cage = 'grave';
             end
             
-            indices = find(strcmp({subjectstatus.subject_fullname}, subj));
+            indices = find(strcmp(subjectnamelist, subj));
 
-toc
             td = cell(1, length(indices));
             for record_idx = 1:length(indices)
                 subject_idx = indices(record_idx);
                 td{record_idx} = Responsibility(strsplit(subjectstatus(subject_idx).schedule,'/'));      % Translate 1,2,3 to Train/Nothing/Water etc.
             end
-toc
             
             animals_dj(subj_idx).techDuties  = td;
             [Y,M,D] = datevec({subjectstatus(indices).effective_date}, 'yyyy-mm-dd');
@@ -380,7 +364,6 @@ toc
             rightNow = struct('date', NaN, 'weight', NaN, ...
                 'earned', NaN, 'supplement', NaN, 'received', NaN, ...
                 'trainStart', NaN, 'trainEnd', NaN, 'performance', NaN, 'mainMazeID', NaN);
-toc
             
             % First: bodyweight
             ind = find(strcmp({weighing_info.subject_fullname}, subj));
@@ -391,7 +374,7 @@ toc
                 rightNow.date = AnimalDatabase.datenum2date(dv(1:3));
                 rightNow.weight = weighing_info(ind).weight;
             end
-toc
+
             % Second: water administration
             ind = find(strcmp({water_info.subject_fullname}, subj));
             if ~isempty(ind)
@@ -402,7 +385,7 @@ toc
                     rightNow.received   = water_info(ind).received;
                 end
             end
-toc
+
             % Third: Session performance
             ind = find(strcmp({session_info.subject_fullname}, subj));
             if ~isempty(ind)
@@ -415,25 +398,29 @@ toc
                 end
             end
             animals_dj(subj_idx).rightNow = rightNow;
-toc
-            % Fourth: Action Items
+
+            % Fourth: Action Items   actionAutomatic_info   actionManual_info
             animals_dj(subj_idx).actItems = [];
-            ind = find(strcmp({actionitem_info.subject_fullname}, subj));
+            counter = 1;
+            act = {};
+            ind = find(strcmp({actionManual_info.subject_fullname}, subj));
             if ~isempty(ind)
-                act = {};
-                counter = 1;
                 for single_idx = ind
-                    dv = datevec(actionitem_info(single_idx).action_date, 'yyyy-mm-dd');
-                    if  AnimalDatabase.datenum2date(dv(1:3)) == rightNow.date & ~isempty(actionitem_info(single_idx).action_id)
-                         act{counter} = actionitem_info(single_idx).action;
-                         counter = counter + 1;
-                    end
+                    act{counter} = actionManual_info(single_idx).act_item;
+                    counter = counter + 1;
                 end
-                animals_dj(subj_idx).actItems = act;
+                
             end
-toc
+            ind = find(strcmp({actionAutomatic_info.subject_fullname}, subj));
+            if ~isempty(ind)
+                for single_idx = ind
+                    act{counter} = actionAutomatic_info(single_idx).notification_message;
+                    counter = counter + 1;
+                end
+                
+            end
+            animals_dj(subj_idx).actItems = act;
             animals_dj(subj_idx).owner = researcherID;
-            
             
             if add_imagefile
                 animals_dj(subj_idx).imageFile              ...
@@ -446,8 +433,7 @@ toc
             else
                 animals_dj(subj_idx).imageFile = [];
             end
-toc   
-disp('done')
+
 
         end
         animals_dj = animals_dj';
@@ -547,19 +533,6 @@ disp('done')
       img           = uint8(img);
     end
 
-    
-    %----- Read all bytes from stream to uint8 (http://stackoverflow.com/a/1323535)
-%     function out = readStream(inStream)
-%       import com.mathworks.mlwidgets.io.InterruptibleStreamCopier;
-%       byteStream  = java.io.ByteArrayOutputStream();
-%       isc         = InterruptibleStreamCopier.getInterruptibleStreamCopier();
-%       isc.copyStream(inStream, byteStream);
-%       inStream.close();
-%       byteStream.close();
-%       out         = char(typecast(byteStream.toByteArray', 'uint8'));
-%     end
-    
-    
     %----- Add columns to a given field
     function specs = addColumns(specs, field, data)
       for iCol = 1:numel(data)
@@ -695,42 +668,6 @@ disp('done')
         end
       end
     end
-    
-    %----- Find the ID of a sheet with the given title, given sheetData returned by mat2sheets()
-%     function sheetID = findSheetID(sheetTitle, sheetData, where, who, allowEmpty)
-%       if nargin < 5 || isempty(allowEmpty)
-%         allowEmpty        = false;
-%       end
-%       if isempty(who)
-%         who               = '';
-%       else
-%         who               = [' for ' who];
-%       end
-%       if ischar(sheetTitle)
-%         sheetTitle        = {sheetTitle};
-%         singleton         = true;
-%       else
-%         singleton         = false;
-%       end
-% 
-%       sheetProps          = [sheetData.sheets.properties];
-%       sheetID             = cell(size(sheetTitle));
-%       for iSheet = 1:numel(sheetTitle)
-%         index             = find(strcmpi({sheetProps.title}, sheetTitle{iSheet}));
-%         if numel(index) > 1
-%           error('AnimalDatabase:findSheetID', 'Multiple information sheets in %s%s found with title "%s".', where, who, sheetTitle{iSheet});
-%         elseif ~isempty(index)
-%           sheetID{iSheet} = num2str(sheetProps(index).sheetId);
-%         elseif ~allowEmpty
-%           error('AnimalDatabase:findSheetID', 'No sheet in %s%s has title "%s".', where, who, sheetTitle{iSheet});
-%         end
-%       end
-% 
-%       if singleton
-%         sheetID           = sheetID{:};
-%       end
-%     end
-    
     
     %----- Minimum test for validity of name, value input pairs 
     function pairs = checkPairInput(pairs, what)
@@ -966,14 +903,6 @@ disp('done')
   %_________________________________________________________________________________________________
   methods (Access = protected)
     
-    %----- Check if a given database URL is available
-    function success = testDataAccess(obj, database, sheet)
-      url         = sprintf( AnimalDatabase.EXPORT_FORMAT, AnimalDatabase.GOOGLESHEETS_URL, database, sheet );
-      connection  = java.net.URL([], url, obj.httpHandler).openConnection();
-      connection.setRequestMethod('HEAD');
-      success     = connection.getResponseCode() == 200;
-    end
-    
     %----- Sets a busy flag and visual indicator that the GUI can't respond right now
     function alreadyBusy = waitImWorking(obj)
       alreadyBusy     = obj.imBusy;
@@ -1002,123 +931,7 @@ disp('done')
         drawnow;
       end
     end
-    
-    
-    %----- Reorder rows of a given database by natural order of the given indexing strings
-    function order = sortDatabase(obj, data, strIndex, startRow, database, sheet, where, who)
-      if size(strIndex,1) ~= size(data,1)
-        error('AnimalDatabase:sortDatabase', 'strIndex must have exactly the same number of rows as data.');
-      end
-      
-      %% Obtained a combined sort order and do nothing if it doesn't reorder any elements
-      numIndex          = asortIndex(strIndex);
-      [~,order]         = sortrows(numIndex);
-      if all(order == (1:size(numIndex,1))')
-        order           = [];
-        return;
-      end
-      
-      %% Upload reordered rows
-      data              = data(order,:);
-      try
-        [~,sheetID]     = mat2sheets(database, sheet, [startRow,1], data);
-      catch err
-        displayException(err);
-        error('AnimalDatabase:sortDatabase', 'Failed to write sorted data into %s (researcher %s).', where, who);
-      end
-    end
-    
-    %----- Copy informational formatting from a template to a sheet
-    function [info, sheetID] = copyTemplateInfo(obj, template, row, database, sheet, where, who)
-      try
-        [~,sheetID]     = mat2sheets(database, sheet, [row 1], {template.field});
-      catch err
-        displayException(err);
-        error('AnimalDatabase:copyTemplateInfo', 'Failed to copy template information to %s sheet ID "%s" for %s.', where, sheet, who);
-      end
-      
-      %% Construct empty information struct with the same fields as the template
-      info              = AnimalDatabase.emptyLike(template);
-    end
-    
-    %----- Gets structural information about the watering logs of the given researcher
-%     function [researcher, refreshed, index] = pullLogsStructure(obj, researcher, forceUpdate)
-%       if ischar(researcher)
-%         [researcher,index]  = obj.findResearcher(researcher);
-%       end
-%       if nargin < 3 || isempty(forceUpdate)
-%         forceUpdate         = false;
-%       end
-%       refreshed             = false;
-%       
-%       %% Special case for person without animals, don't require watering logs
-%       if length(researcher.animals) == 0
-%         if nargout > 2 && ~exist('index', 'var')
-%           [~,index]         = obj.findResearcher(researcher.ID);
-%         end
-%         return;
-%       end
-%       
-%       %% Locate the watering logs spreadsheet, refreshing the overview if necessary
-%       database              = researcher.wateringLogs;
-%       if isempty(database)
-%         obj.pullOverview();
-%         [researcher,index]  = obj.findResearcher(researcher.ID);
-%         if isempty(database)
-%           error('AnimalDatabase:pullLogsStructure', 'Researcher %s does not have a wateringLogs URL specified. Please fix this via the Google Spreadsheets web interface.', researcher.ID);
-%         end
-%       end
-% 
-%       %% Retrieve the log structure if necessary
-%       if isempty(researcher.logStructure) || forceUpdate
-%         [~,index]           = obj.findResearcher(researcher.ID);
-%         obj.Researchers(index).logStructure               ...
-%                             = mat2sheets(database);
-%         [researcher,index]  = obj.findResearcher(researcher.ID);
-%         refreshed           = true;
-%       end
-%       
-%       %% Ensure all required outputs
-%       if nargout > 2 && ~exist('index', 'var')
-%         [~,index]           = obj.findResearcher(researcher.ID);
-%       end
-%     end
-    
-    %----- Find a particular animal's watering log sheet, refreshing info if necessary
-%     function [gid, researcher, refreshed, index] = findDailyLogsID(obj, researcher, animalID, allowRefresh, where)
-%       %% Default arguments
-%       if nargin < 4 || isempty(allowRefresh)
-%         allowRefresh        = true;
-%       end
-%       if nargin < 5 || isempty(where)
-%         where               = 'watering logs';
-%       end
-%       if ischar(researcher)
-%         researcher          = obj.findResearcher(researcher);
-%       end
-%       
-%       %% First try to find the desired sheet ID
-%       gid                   = AnimalDatabase.findSheetID(animalID, researcher.logStructure, where, researcher.Name, true);
-%       refreshed             = false;
-%       
-%       if ~allowRefresh
-%         %% Accept the current results if refresh is not allowed
-%         if nargout > 3
-%           [~,index]         = obj.findResearcher(researcher.ID);
-%         end
-%       
-%       elseif isempty(gid) || ~obj.testDataAccess(researcher.wateringLogs,gid)
-%         %% Pull logs from remote location if not present or not accessible
-%         [researcher,index]  = obj.pullLogsStructure(researcher, true);
-%         refreshed           = true;
-%         gid                 = AnimalDatabase.findSheetID(animalID, researcher.logStructure, where, researcher.Name, true);
-%         
-%       elseif nargout > 3
-%         [~,index]           = obj.findResearcher(researcher.ID);
-%       end
-%     end
-    
-    
+
     %----- Create a GUI control based on a given format template
     % Controls are either for display purposes only (inactive) or can be edited by the user. In the
     % latter case they can either currently contain a default value, an invalid user-entered value,
@@ -2525,24 +2338,6 @@ disp('done')
         sheetProps              = [researcher.logStructure.sheets.properties];
         aniProps                = sheetProps(strcmpi({sheetProps.title}, animalID));
         delTitle                = ['DELETED ' animalID];
-        
-        if ~isempty(aniProps)
-          %% If a DELETED sheet already exists for this animal, delete it
-          delProps              = sheetProps(strcmpi({sheetProps.title}, delTitle));
-          if ~isempty(delProps)
-            mat2sheets(researcher.wateringLogs, ['!' num2str(delProps.sheetId)]);
-          end
-        
-          %% Rename the animal's watering sheet
-          mat2sheets(researcher.wateringLogs, num2str(aniProps.sheetId), delTitle);
-        end
-        
-        %% Locate animal's row in the researcher's animal list; always update to be safe
-        animals                 = obj.pullAnimalList(researcherID);
-        iAnimal                 = find(strcmpi({animals.ID}, animalID));
-        if ~isempty(iAnimal)
-          mat2sheets(AnimalDatabase.DATABASE_ID, researcher.animalsGID, [-(iAnimal + 1), 0]);
-        end
       end
       
       
@@ -3583,40 +3378,6 @@ disp('done')
     end
     
     %----- Transfer the location of selected cages to the given holder
-%     function transferAnimals(obj, hObject, event, holderID, closeFig, personID, forFinalize)
-%       %% Loop through all selected groups of animals
-%       btnGroup        = obj.btn.aniGroup(arrayfun(@(x) get(x,'Value'), obj.btn.aniGroup) == 1);
-%       for iGrp = 1:numel(btnGroup)
-%         info          = get(btnGroup(iGrp), 'UserData');
-%         groupAni      = info{2};
-%         
-%         %% Push the new location of these animals 
-%         researcherID  = unique({groupAni.owner});
-%         if numel(researcherID) ~= 1
-%           error('AnimalDatabase:transferAnimals', 'Invalid researcher (owner) ID for animals: %s', strjoin({groupAni.ID}));
-%         end
-%         obj.pushBatchInfo(researcherID{:}, {groupAni.ID}, 'whereAmI', holderID);
-%         
-%         %% Record the new location for further interactions with the GUI
-%         [groupAni.whereAmI] = deal(holderID);
-%         info{1}             = obj.whereIsThisThing(groupAni, personID);
-%         info{2}             = groupAni;
-%         set(btnGroup(iGrp), 'UserData', info);
-%       end
-%       
-%       %% Close the GUI figure if so desired
-%       if isempty(closeFig)
-%         obj.selectAnimalGroup([], [], personID, forFinalize);
-%       else
-%         delete(closeFig);
-%         if strcmpi(get(obj.axs.aniImage,'Visible'), 'off')
-%           delete( get(obj.tbl.aniData, 'Children') );
-%           delete( get(obj.tbl.aniDaily, 'Children') );
-%         end
-%       end
-%     end
-    
-    %----- Transfer the location of selected cages to the given holder
     function selectAllGroups(obj, hObject, event, personID, forCheckIn)
       
       %% Select all cages for either check in or check out
@@ -3939,15 +3700,6 @@ disp('done')
         interactive   = true;
       end
       
-%       %% Required to retrieve tokens from Google
-%       if ~exist('google_tokens.mat', 'file')
-%         RunOnce(AnimalDatabase.CLIENT_ID, AnimalDatabase.CLIENT_SECRET);
-%       end
-%       
-%       cookieManager   = java.net.CookieManager([], java.net.CookiePolicy.ACCEPT_ALL);
-%       java.net.CookieHandler.setDefault(cookieManager);
-%       obj.httpHandler = sun.net.www.protocol.https.Handler;
-      
       %% Set self identification
       if exist('RigParameters', 'class')
         obj.whoAmI    = RigParameters.rig;
@@ -4211,237 +3963,7 @@ disp('done')
       
     end
     
-    
-    %----- Retrieve data from a given sheet of a Google document as a cell array of strings
-%     function [data, rawText] = readFromDatabase(obj, database, sheet, where, who)
-%       if nargin < 3 || isempty(sheet)
-%         sheet     = AnimalDatabase.FIRST_SHEET;
-%       end
-%       if nargin < 4 || isempty(where)
-%         where     = database;
-%       end
-%       if nargin < 5 || isempty(who)
-%         who       = '';
-%       end
-%       if ~isempty(who)
-%         who       = [' for ' who];
-%       end
-%       
-%       %% Get raw data as a cell array
-%       url         = sprintf( AnimalDatabase.EXPORT_FORMAT, AnimalDatabase.GOOGLESHEETS_URL, database, sheet );
-%       connection  = java.net.URL([], url, obj.httpHandler).openConnection(); % Constructs an URL object
-%       try
-%         rawText   = connection.getInputStream();
-%         rawText   = AnimalDatabase.readStream(rawText); % get content of website, specified by connection
-%       catch err
-%         error('AnimalDatabase:readFromDatabase', 'Invalid %s sheet ID "%s"%s.', where, sheet, who);
-%       end
-%       
-%       if isempty(rawText)
-%         data      = {};
-%         return;
-%       end
-%       
-%       %% Parse CSV into a cell array
-%       data        = csv2cell(rawText);
-% 
-%     end
-    
-    %----- Retrieve data from a given sheet of a Google document in a particular template-specified format
-%     function [info, nextRow] = parseFromDatabase(obj, template, row, database, sheet, where, who)
-%       if iscell(database)
-%         data            = database;
-%       else
-%         data            = obj.readFromDatabase(database, sheet, where, who);
-%       end
-%       if size(data,2) < numel(template)
-%         error('AnimalDatabase:parseFromDatabase', 'Too few columns (%d) in %s sheet ID "%s" for %s compared to the expected template (%d).', size(data,2), where, sheet, who, numel(template));
-%       end
-%       
-%       %% Initialize output with the fields in the given template
-%       info              = AnimalDatabase.emptyLike(template);
-%       fields            = {template.identifier};
-%       
-%       %% Add all available rows (stop when there is a completely empty one)
-%       nextRow           = row;
-%       while nextRow <= size(data,1)
-%         if all(cellfun(@isempty, data(nextRow,:)))
-%           break;
-%         end
-%         
-%         iData           = numel(info) + 1;
-%         for iCol = 1:numel(fields)
-%           info(iData).(fields{iCol})          ...
-%                         = obj.parseAsFormat(data{nextRow,iCol}, template(iCol).data);
-%         end
-%         nextRow         = nextRow  + 1;
-%       end
-%     end
-    
-    %----- Write a row into the database at the specified location
-%     function sheetID = writeDatabaseRow(obj, data, template, row, database, sheet, where, who)
-%       %% Convert data to string format
-%       dataRep           = cell(1, numel(template));
-%       for iField = 1:numel(template)
-%         dataRep{iField} = obj.applyFormat(data.(template(iField).identifier), template(iField).data);
-%       end
-%       
-%       %% Write at the given location
-%       try
-%         [~,sheetID]     = mat2sheets(database, sheet, [row,1], dataRep);
-%       catch err
-%         displayException(err);
-%         error('AnimalDatabase:writeDatabaseRow', 'Failed to write data into %s for %s.', where, who);
-%       end
-%     end
-    
-    %----- Write a column into the database at the specified location
-%     function sheetID = writeDatabaseCol(obj, data, template, col, database, sheet, where, who)
-%       %% Convert data to string format
-%       dataRep           = cell(numel(data), 1);
-%       for iData = 1:numel(data)
-%         dataRep{iData}  = obj.applyFormat(data{iData}, template.data);
-%       end
-%       
-%       %% Write at the given location -- N.B. we assume that the first row is the header
-%       try
-%         [~,sheetID]     = mat2sheets(database, sheet, [2,col], dataRep);
-%       catch err
-%         displayException(err);
-%         error('AnimalDatabase:writeDatabaseRow', 'Failed to write data into %s (researcher %s).', where, who);
-%       end
-%     end
-    
-    %----- Change the given sheet of the database to follow a new template, adding/removing columns if necessary
-%     function [didSomething, cancelled] = redactDatabase(obj, template, database, sheet, where, who)
-%       %% Retrieve raw data
-%       didSomething      = false;
-%       cancelled         = false;
-%       if iscell(database)
-%         data            = database;
-%       else
-%         data            = obj.readFromDatabase(database, sheet, where, who);
-%       end
-%       if isempty(data)
-%         return;
-%       end
-%       
-%       %% Try to match each column by header (1st row) to the template
-%       header            = strtrim(data(1,:));
-%       tmplField         = strtrim({template.field});
-%       [inTmpl,tmplIndex]= ismember( lower(header), lower(tmplField) );
-%       
-%       %% Verify with user in case any columns with data need to be deleted
-%       hasData           = ~cellfun(@isempty, strtrim(data(2:end,~inTmpl)));
-%       if any(hasData(:))
-%         notThere        = strcat({'        '}, header(~inTmpl));
-%         proceed         = questdlg( { 'Data has column(s) not present in the target template:', notThere{:}                     ...
-%                                     , sprintf('This will delete %d cell(s) with data in %s for %s.',sum(hasData(:)),where,who)  ...
-%                                     , 'Continue?'                                       ...
-%                                     }                                                   ...
-%                                   , sprintf('Redacting %s for %s',where,who)            ...
-%                                   , 'Yes', 'No', 'Cancel', 'No'                         ...
-%                                   );
-%         if strcmp(proceed, 'No')
-%           return;
-%         end
-%         if strcmp(proceed, 'Cancel')
-%           cancelled     = true;
-%           return;
-%         end
-%       end
-%       
-%       %% Make a new data array that spans the columns of both the original and the template
-%       redacted          = repmat({''}, size(data,1), max(size(data,2),numel(template)));
-%       redacted(:,tmplIndex(inTmpl))   = data(:,inTmpl);
-%       redacted(1,1:numel(tmplField))  = tmplField;
-%       if isequal(strtrim(data), strtrim(redacted))
-%         return;
-%       end
-% 
-%       %% Overwrite the entire sheet
-%       try
-%         mat2sheets(database, sheet, [1,1], redacted);
-%       catch err
-%         displayException(err);
-%         error('AnimalDatabase:redactDatabase', 'Failed to write data into %s for %s.', where, who);
-%       end
-%       didSomething      = true;
-%     end    
-    
-    
-    %----- Change all existing animal listing sheets to match the current template, prompting the user if data needs to be modified
-%     function numChanged = redactAnimalLists(obj)
-%       %% Setup data source
-%       database        = AnimalDatabase.DATABASE_ID;
-%       where           = 'animal lists';
-%       numChanged      = 0;
-%       
-%       %% Always get the current template and database structure
-%       obj.pullOverview();
-%       for iID = 1:numel(obj.Researchers)
-%         fprintf(' ***  %15s : ', obj.Researchers(iID).ID);
-%         if isempty(obj.Researchers(iID).animalsGID)
-%           fprintf('(no animals)\n');
-%           continue;
-%         end
-%         
-%         [didSomething, cancelled]     ...
-%                       = obj.redactDatabase(obj.tmplAnimal, database, obj.Researchers(iID).animalsGID, where, obj.Researchers(iID).ID);
-%         if cancelled
-%           fprintf('CANCELLED by user.\n');
-%           return;
-%         end
-%         
-%         numChanged    = numChanged + didSomething;
-%         if didSomething
-%           fprintf('modified\n');
-%         else
-%           fprintf('no change\n');
-%         end
-%       end
-%     end
-    
-    %----- Change all existing animal daily logs to match the current template, prompting the user if data needs to be modified
-%     function numChanged = redactDailyLogs(obj)
-%       %% Always get the current animal lists and database structure
-%       [animals,researchers] = obj.pullAnimalList();
-%       numChanged            = 0;
-%       for iID = 1:numel(researchers)
-%         fprintf(' ***  %-15s', researchers(iID).ID);
-%         if isempty(animals{iID}) || isempty(researchers(iID).wateringLogs)
-%           fprintf('  (no animals/logs)\n');
-%           continue;
-%         end
-%         fprintf('\n');
-%         
-%         %% Setup data source
-%         database            = researchers(iID).wateringLogs;
-%         researcher          = obj.pullLogsStructure(researchers(iID).ID);
-%         sheetProps          = [researcher.logStructure.sheets.properties];
-%         where               = sprintf('daily logs (researcher %s)', researchers(iID).ID);
-%         
-%         %% Redact watering sheet only for the listed animals
-%         aniSheets           = sheetProps( ismember(lower({sheetProps.title}), lower({animals{iID}.ID})) );
-%         for iAni = 1:numel(aniSheets)
-%           fprintf('  |   %20s : ', aniSheets(iAni).title);
-%           drawnow;
-%           [didSomething, cancelled]     ...
-%                             = obj.redactDatabase(obj.tmplDailyInfo, database, int2str(aniSheets(iAni).sheetId), where, aniSheets(iAni).title);
-%           if cancelled
-%             fprintf('CANCELLED by user.\n');
-%             return;
-%           end
-%           
-%           numChanged        = numChanged + didSomething;
-%           if didSomething
-%             fprintf('modified\n');
-%           else
-%             fprintf('no change\n');
-%           end
-%         end
-%       end
-%     end
+
     
 
     %----- Convert string input (raw database entries) to a predefined format; checks for validity if mandatory 
@@ -4504,7 +4026,7 @@ disp('done')
         end
         
       elseif strcmp(format{2}, 'DATE')
-        %% Data is a date formatted as month/day/year --- N.B. hardcoded Google default!
+        %% Data is a date formatted as month/day/year
         parsed    = sscanf(input, AnimalDatabase.DATE_FORMAT);
         if numel(parsed) == 3
           parsed  = parsed([3 1 2])';           % HACK return in Matlab datevec format
@@ -4638,7 +4160,7 @@ disp('done')
         end
         
       elseif strcmp(format{2}, 'DATE')
-        %% Data is a date formatted as month/day/year --- N.B. hardcoded Google default!
+        %% Data is a date formatted as month/day/year
         str       = sprintf(AnimalDatabase.DATE_FORMAT, input(2), input(3), input(1));
         number    = AnimalDatabase.datenum2date(input);
         
@@ -4826,9 +4348,7 @@ disp('done')
           end
 
           value       = obj.suggestedForFormat(template(iVar).data, evalData);
-%           if isempty(value)
-%             value     = obj.emptyForFormat(template(iVar).data, 1);
-%           end
+
           data.(template(iVar).identifier)  = value;
         end
       end
@@ -5147,30 +4667,9 @@ disp('done')
     %----- Ensure that a daily information sheet exists for the given researcher and animal, creating one if necessary
     function [researcher] = openDailyLogs(obj, researcherID, animalID)
         
-        
         [logs, animals, template] = pullAnimalList(obj, researcherID);          %CHECKME!
         researcher.animals = animals;
-        
-%       if nargin < 4
-%         createIfNecessary     = true;
-%       end
-%       
-%       %% Locate the watering logs spreadsheet and get its structure if necessary
-%       [researcher,refreshed]  = obj.pullLogsStructure(researcherID);
-%       where                   = 'watering logs';
-%       database                = researcher.wateringLogs;
-% 
-%       %% Check if there is a recorded sheet in the database
-%       [gid,researcher,~,index]= obj.findDailyLogsID(researcher, animalID, ~refreshed, where);
-%       if ~isempty(gid) && obj.testDataAccess(database, gid)
-%         isNew                 = false;
-%       elseif ~createIfNecessary
-%         error('AnimalDatabase:openDailyLogs', 'No daily logs sheet found for animal %s of researcher %s.', animalID, researcherID);
-%       else
-%         isNew                 = true;
-%         mat2sheets(database, animalID);
-%         gid                   = ['!' animalID];
-%       end
+
     end
     
     
@@ -5290,12 +4789,7 @@ disp('done')
         animals           = animals{:};
       end
 
-  end
-    
-%     function [researcher, refreshed, template] = test(obj, researcherID)
-%         [researcher, refreshed] = obj.pullLogsStructure(researcherID);
-%         template = obj.tmplAnimal;
-%     end
+    end
 
     %----- Read daily log information given a single researcher and possibly multiple animals (default all)
     function [logs, animals, template] = pullDailyLogs(obj, researcherID, animalID)
@@ -5331,17 +4825,17 @@ disp('done')
       water_status = fetch(action.WaterAdministration * subject.Subject & struct('user_id', researcherID), ...
             'subject_fullname', 'administration_date', 'earned', 'supplement', 'received');
       weight_status = fetch(action.Weighing * proj(subject.Subject, 'user_id') & struct('user_id', researcherID), ...
-            'weight', 'weigh_person','weighing_time','location', 'low_weight_alert');      
+            'weight', 'weigh_person','weighing_time','location');      
       health_status = fetch(subject.HealthStatus * subject.Subject & struct('user_id', researcherID), ...
             'normal_behavior', 'bcs','activity','posture_grooming','eat_drink', 'turgor', 'comments'); 
       action_status = fetch(action.Notification * subject.Subject & struct('user_id', researcherID), ...
             'cage_notice','health_notice', 'weight_notice');
-      actionitem_status = fetch(action.ActionItem * subject.Subject & struct('user_id', researcherID), ...
+      actionitem_status = fetch(action.ActionRecord * subject.Subject & struct('user_id', researcherID), ...
             'action_id', 'action');
       session_status = fetch(acquisition.Session * subject.Subject & struct('user_id', researcherID), ...
-            'session_start_time', 'session_end_time', 'session_location', 'session_performance', 'level', 'protocol', 'stimulus_bank', 'set_id');
+            'session_start_time', 'session_end_time', 'session_location', 'session_performance', 'level', 'session_protocol', 'session_code_version', 'stimulus_bank');
       sessiondetails_status = fetch(behavior.TowersSession * subject.Subject & struct('user_id', researcherID), ...
-            'rewarded_side', 'chosen_side','maze_id','num_towers_r','num_towers_l', 'ball_squal'); 
+            'rewarded_side', 'chosen_side', 'maze_id', 'num_towers_r', 'num_towers_l', 'stimulus_set', 'ball_squal'); 
 
       %% Reorganize the data to the AnimalDatabaseFormat
       
@@ -5388,7 +4882,7 @@ disp('done')
                 'versionInfo' ,  [],  ...
                 'stimulusBank',  [],  ...
                 'stimulusSet' ,  [],  ...
-                'squall'      ,  []);
+                'squal'       ,  []);
 
         % Add water info
         indices = find(strcmp({water_status.subject_fullname}, animal.ID));
@@ -5427,7 +4921,6 @@ disp('done')
             [Y,M,D,H,MN,S] = datevec(relevant_weight_info(i).weighing_time, 'yyyy-mm-dd HH:MM:SS');
             dj_tmp(log_idx).weighTime     = [H, MN];
             dj_tmp(log_idx).weighLocation = relevant_weight_info(i).location;
-            dj_tmp(log_idx).comments      = relevant_weight_info(i).low_weight_alert;
         end
         
         % Add health info
@@ -5447,12 +4940,21 @@ disp('done')
                 log_idx        = 1;
             end
             dj_tmp(log_idx).normal       = YesNoMaybe(relevant_health_info(i).normal_behavior) ;
-            dj_tmp(log_idx).bcs          = relevant_health_info(i).bcs;
-            dj_tmp(log_idx).activity     = relevant_health_info(i).activity;   
-            dj_tmp(log_idx).posture      = relevant_health_info(i).posture_grooming;
-            dj_tmp(log_idx).eatDrink     = relevant_health_info(i).eat_drink;
-            dj_tmp(log_idx).turgor       = relevant_health_info(i).turgor;
-            dj_tmp(log_idx).healthNotice = relevant_health_info(i).comments;
+            if isfinite(relevant_health_info(i).bcs)
+                dj_tmp(log_idx).bcs          = relevant_health_info(i).bcs;
+                dj_tmp(log_idx).activity     = relevant_health_info(i).activity;   
+                dj_tmp(log_idx).posture      = relevant_health_info(i).posture_grooming;
+                dj_tmp(log_idx).eatDrink     = relevant_health_info(i).eat_drink;
+                dj_tmp(log_idx).turgor       = relevant_health_info(i).turgor;
+            else
+                dj_tmp(log_idx).normal   = [];
+                dj_tmp(log_idx).bcs      = [];
+                dj_tmp(log_idx).activity = [];
+                dj_tmp(log_idx).posture  = [];
+                dj_tmp(log_idx).eatDrink = [];
+                dj_tmp(log_idx).turgor   = [];
+            end
+            dj_tmp(log_idx).comments = relevant_health_info(i).comments;
         end
         
         % Add notifications
@@ -5468,7 +4970,7 @@ disp('done')
             end
             dj_tmp(log_idx).cageNotice   = relevant_notification_info(i).cage_notice;
             dj_tmp(log_idx).healthNotice = relevant_notification_info(i).health_notice;
-            dj_tmp(log_idx).weightNotice = relevant_notification_info(i).cage_notice;
+            dj_tmp(log_idx).weightNotice = relevant_notification_info(i).weight_notice;
         end
         
         % Add action items.
@@ -5485,14 +4987,16 @@ disp('done')
                 log_idx = length(dj_tmp) + 1;
                 dj_tmp(log_idx).date = dv(1:3);
             end
-            Nactions = length(dj_tmp(log_idx).actions);                     % pull actions
-            if Nactions > 0
-                action_tmp = dj_tmp(log_idx).actions;
+            [Nactions, ~] = size(dj_tmp(log_idx).actions);                     % pull actions
+            action_tmp = dj_tmp(log_idx).actions;
+            action_tmp{Nactions+1,1} = relevant_actions_info(i).action_id;  % append new action  
+            this_action = relevant_actions_info(i).action;
+            if contains(this_action,']')                                    % get rid of [Yes]/[No]
+                this_action_clean = strsplit(this_action, '] ');
+                action_tmp{Nactions+1,2} = this_action_clean{2};
             else
-                action_tmp = cell(1,2);
+                action_tmp{Nactions+1,2} = this_action;
             end
-            action_tmp{Nactions+1,1} = relevant_actions_info(i).action_id;  % append new action    
-            action_tmp{Nactions+1,2} = relevant_actions_info(i).action;
             dj_tmp(log_idx).actions  = action_tmp;                          % save updated actions
         end
         
@@ -5516,8 +5020,10 @@ disp('done')
             dj_tmp(log_idx).rigName       = relevant_session_info(i).session_location;
             dj_tmp(log_idx).performance   = relevant_session_info(i).session_performance;
             dj_tmp(log_idx).mainMazeID    = relevant_session_info(i).level; 
-            dj_tmp(log_idx).behavProtocol = relevant_session_info(i).protocol; 
             dj_tmp(log_idx).stimulusBank  = relevant_session_info(i).stimulus_bank;
+            dj_tmp(log_idx).versionInfo   = relevant_session_info(i).session_code_version;
+            protocols = relevant_session_info(i).session_protocol;
+            dj_tmp(log_idx).behavProtocol = strsplit(protocols, ' '); 
         end
         
         
@@ -5537,14 +5043,13 @@ disp('done')
             dj_tmp(log_idx).mazeID        = relevant_sessiondetails_info(i).maze_id;
             dj_tmp(log_idx).numTowersR    = relevant_sessiondetails_info(i).num_towers_r;
             dj_tmp(log_idx).numTowersL    = relevant_sessiondetails_info(i).num_towers_l;
-            dj_tmp(log_idx).versionInfo   = []; %FIXME
-            dj_tmp(log_idx).stimulusSet   = []; %FIXME
             dj_tmp(log_idx).squal         = relevant_sessiondetails_info(i).ball_squal;
+            dj_tmp(log_idx).stimulusSet   = relevant_sessiondetails_info(i).stimulus_set;
         end
-        logs_dj{iAni} = dj_tmp';
+        logs_dj{iAni} = dj_tmp;
       end
       
-      logs = logs_dj;
+      logs = logs_dj';
       disp('pullDailyLogs executed - with datajoint backend')
       
       %% Convenience for return type
@@ -5562,11 +5067,7 @@ disp('done')
       varargin          = AnimalDatabase.checkPairInput(varargin, 'Animal information to set');
       
       %% Setup data source
-%       database          = AnimalDatabase.DATABASE_ID;
       where             = ['information for ' animalID];
-%       [gid, researcher, isNew, iResearcher]       ...
-%                         = obj.openAnimalList(researcherID);
-%       researcher = AnimalDatabase.getResearcherDJ(researcherID);
       [researcher, iResearcher] = obj.findResearcher(researcherID);
       isNew = sum(strcmp({researcher.animals.ID}, animalID)) == 0;  
 
@@ -5626,7 +5127,6 @@ disp('done')
       end
       
       %% Write the entire row in string format
-%       obj.writeDatabaseRow(animal, template, dataRow+1, database, gid, where, researcher.Name);
       animal.owner      = researcherID;
       obj.Researchers(iResearcher).animals(dataRow) = animal;
       
@@ -5797,14 +5297,8 @@ disp('done')
     %----- Write logging information for *today* for a single animal; specify as pairs e.g. 'received', 1.2, 'weight', 21.4, ...
     function [logs, animal, researcher] = pushDailyInfo(obj, researcherID, animalID, varargin)
       varargin          = AnimalDatabase.checkPairInput(varargin, 'Daily information to set');
-
-%       %% Setup data source
-%       [gid, researcher, isNew, index]     ...
-%                         = obj.openDailyLogs(researcherID, animalID);
-%       database          = researcher.wateringLogs;
-       where             = ['daily logs for ' animalID];
-       template          = obj.tmplDailyInfo;
-%       dataRow           = 2;      % right after header
+      where             = ['daily logs for ' animalID];
+      template          = obj.tmplDailyInfo;
       
       researcher      = obj.findResearcher(researcherID);
       if ~isstruct(researcher.animals)
@@ -5813,32 +5307,6 @@ disp('done')
       end
       animal            = researcher.animals(strcmpi({researcher.animals.ID}, animalID));
       logs = obj.pullDailyLogs(researcherID, animalID);
-      
-      %% Create a new sheet if necessary
-%       if isNew
-%         [logs, gid]     = obj.copyTemplateInfo(template, 1, database, gid, where, researcher.Name);
-%       
-%         %% Overview information
-%         overview          = { 'Experimenter'            , researcher.Name                                     ...
-%                             ; 'Principle Investigator'  , researcher.PI                                       ...
-%                             ; 'Protocol'                , researcher.Protocol                                 ...
-%                             ; 'Last animal addition'    , datestr(now(), AnimalDatabase.DATE_DISPLAY)       ...
-%                             ; ''                        , ''                                                  ...
-%                             ; 'This spreadsheet is generated and maintained by a program, please do not edit.', ''  ...
-%                             ; 'Logs for individual mice are in the sheets corresponding to their names.'      , ''  ...
-%                             };
-%         try
-%           mat2sheets(database, AnimalDatabase.FIRST_SHEET, [1,1], overview, 'Overview');
-%         catch err
-%           displayException(err);
-%           error('AnimalDatabase:pullDailyLogs', 'Failed to create overview sheet in %s for %s.', where, researcher.Name);
-%         end
-%         
-%       else
-%         data              = obj.readFromDatabase(database, gid, where, researcher.Name);
-%         logs              = obj.parseFromDatabase(template, dataRow, data, gid, where, researcher.Name);
-%       end
-
       
       %% Find the location at which to output information for today
       % N.B. TODO This doesn't handle going over the edge of midnight... we assume behavior is run
@@ -5883,10 +5351,7 @@ disp('done')
         end
         logs(dataRow).(varargin{iArg})  = varargin{iArg+1};
       end
-  
-      %% Write the entire row in string format
-%       obj.writeDatabaseRow(logs(dataRow), template, dataRow+1, database, gid, where, researcher.Name);
-      
+
         
       %% Construct "right now" summary info and store in the animal listing; must include date stamp
       filledLog         = obj.suggestValues(template, logs(dataRow), {obj.whatIsThePlan(animal,false)});
@@ -5901,7 +5366,7 @@ disp('done')
         error('AnimalDatabase:pushDailyInfo', 'Invalid contents of rightNow struct, numeric arrays are not supported.');
       end
       summary           = cell2struct(summary, {obj.tmplRightNow.data}, 2);
-%       summary.date      = AnimalDatabase.datenum2date(datevec(thisDate));
+
       % Special case for weight -- always ensure a valid value from the last known weighing
       if isempty(summary.weight)
         iAvailable      = find(~cellfun(@isempty, {logs.weight}), 1, 'last');
@@ -6078,53 +5543,9 @@ disp('done')
 
             insert(acquisition.Session, session)
         end
-      
-      
-    end
-    
-    %----- Write one column of animal-specific information for multiple *existing* animals
-%     function pushBatchInfo(obj, researcherID, animalIDs, identifier, value)
-%       %% Setup data source
-%       database          = AnimalDatabase.DATABASE_ID;
-%       where             = 'animal information';
-%       [gid, researcher, isNew, index]     ...
-%                         = obj.openAnimalList(researcherID);
-%       if isNew
-%         template        = obj.tmplAnimal;
-%         [list, gid]     = obj.copyTemplateInfo(template, 1, database, gid, where, researcher.Name);
-%         obj.Researchers(index).animalsGID = gid;
-%         researcher      = obj.Researchers(index);
-%       else
-%         [list,~,template] = obj.pullAnimalList(researcherID);
-%       end
-%       
-%       %% Find the location at which to output information 
-%       dataRow           = cellfun(@(x) find(strcmpi(x,{list.ID})), animalIDs, 'UniformOutput', false);
-%       if any(cellfun(@isempty, dataRow))
-%         error('AnimalDatabase:pushBatchInfo', 'Animal(s) not found in database for researcher %s: %s', researcherID, strjoin(animalIDs(cellfun(@isempty, dataRow)), ', '));
-%       end
-%       dataRow           = [dataRow{:}];
-%       
-%       dataCol           = find(strcmp({template.identifier}, identifier));
-%       if numel(dataCol) ~= 1
-%         error('AnimalDatabase:pushBatchInfo', 'Invalid field %s to write.', identifier);
-%       end
-%       template          = template(dataCol);
-%       
-%       %% Retrieve the column to be written, and update rows for target animals
-%       data              = {list.(template.identifier)};
-%       if iscell(value)
-%         data(dataRow)   = value;
-%       else
-%         [data{dataRow}] = deal(value);
-%       end
-%       
-%       %% Write the entire column in string format
-%       obj.writeDatabaseCol(data, template, dataCol, database, gid, where, researcher.Name);
-% 
-%     end
 
-    
+    end
+
     %----- Display a GUI for viewing and interacting with the database plus daily information
     function gui(obj, personID)
       if nargin < 2
@@ -6396,12 +5817,6 @@ disp('done')
         blurb                 = ['<html><div style="text-align:center">' strjoin(info) '</div></html>'];
         set(obj.btn.aniInfo(iAni), 'String', blurb);
       end
-      
-%       catch err
-%         obj.imBusy            = false;
-%         displayException(err);
-%         keyboard
-%       end
       
       obj.imBusy              = false;
     end
