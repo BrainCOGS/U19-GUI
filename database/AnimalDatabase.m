@@ -436,8 +436,13 @@ classdef AnimalDatabase < handle
 
 
         end
-        animals_dj = animals_dj';
 
+        animals_dj = animals_dj';
+        field_order = {'ID', 'cage', 'image', 'whereAmI', 'protocol', ...
+                       'sex', 'dob', 'genotype', 'initWeight', 'waterPerDay', ...
+                       'status', 'techDuties', 'effective', 'actItems', 'rightNow', ...
+                       'imageFile', 'owner'};
+        animals_dj = orderfields(animals_dj, field_order);
     end
     
     %The GUI should work for nickname queries, and netID queries
@@ -4752,7 +4757,6 @@ classdef AnimalDatabase < handle
       obj.NotificationSettings.WeeklyDigestTime = cell2mat(weekly_digest_time);
       overview_dj.NotificationSettings = obj.NotificationSettings;
       overview = overview_dj;      
-      disp('pullOverview executed - with datajoint backend.');
     end
     
     
@@ -4774,13 +4778,9 @@ classdef AnimalDatabase < handle
       animals             = cell(size(researcherID));
       researchers         = cell(size(researcherID));
       for iID = 1:numel(researcherID)
-
-        animals{iID} = obj.getAnimalsDJ(researcherID{iID});
-        disp('getAnimalsDJ executed - with datajoint backend.');
-        
+        animals{iID} = obj.getAnimalsDJ(researcherID{iID});        
         researchers{iID}  = obj.getResearcherDJ(researcherID{iID}, false);
         researchers{iID}.animals = animals{iID};
-        
       end
       
       %% Convenience for return type
@@ -5050,7 +5050,6 @@ classdef AnimalDatabase < handle
       end
       
       logs = logs_dj';
-      disp('pullDailyLogs executed - with datajoint backend')
       
       %% Convenience for return type
       if singleton
