@@ -442,7 +442,10 @@ classdef AnimalDatabase < handle
                        'sex', 'dob', 'genotype', 'initWeight', 'waterPerDay', ...
                        'status', 'techDuties', 'effective', 'actItems', 'rightNow', ...
                        'imageFile', 'owner'};
-        animals_dj = orderfields(animals_dj, field_order);
+                   
+        if length(animals_dj)>0
+            animals_dj = orderfields(animals_dj, field_order);
+        end
     end
     
     %The GUI should work for nickname queries, and netID queries
