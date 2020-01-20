@@ -17,8 +17,8 @@
 %       logs      = dbase.pullDailyLogs('sakoay','K62');    % a particular animal ID for sakoay
 %
 % To write data to the database, use the following "push*" functions:
-%       dbase.pushAnimalInfo('sakoay', 'k62', 'received', 1.3, 'weight', 22.5);
-%       dbase.pushDailyInfo('sakoay', 'k62', 'received', 1.3, 'weight', 22.5);
+%       db.pushAnimalInfo('testuser', 'testuser_T01', 'initWeight', 23.5)
+%       db.pushDailyInfo('testuser', 'testuser_T01', 'received', 1.3, 'weight', 22.5);
 %
 % You can also use all low-level datajoint functions.
 %
@@ -80,8 +80,8 @@ classdef AnimalDatabase < handle
   
   %_________________________________________________________________________________________________
   properties (Constant)
-
-    DATAJOINT_STATUS      = getdjconnection();
+    
+    DATAJOINT_STATUS      = getdjconnection('u19_', 'datajoint00.pni.princeton.edu');
 
     UPDATE_PERIOD         = 10  %TIME FOR AUTOUPDATE - UNIT???
     UPDATE_PERIOD_SCALE   = 0.3
@@ -355,7 +355,7 @@ classdef AnimalDatabase < handle
             animals_dj(subj_idx).techDuties  = td;
             [Y,M,D] = datevec({subjectstatus(indices).effective_date}, 'yyyy-mm-dd');
             animals_dj(subj_idx).effective   = num2cell([Y,M,D],2)';
-            animals_dj(subj_idx).status      = num2cell(int8(HandlingStatus({subjectstatus(indices).subject_status})));
+            animals_dj(subj_idx).status      = num2cell(HandlingStatus({subjectstatus(indices).subject_status}));
             animals_dj(subj_idx).waterPerDay = {subjectstatus(indices).water_per_day};  
 
 
@@ -5068,37 +5068,38 @@ classdef AnimalDatabase < handle
     function [animal, researcher] = pushAnimalInfo(obj, researcherID, animalID, varargin)
       varargin          = AnimalDatabase.checkPairInput(varargin, 'Animal information to set');
       
-      %% Setup data source
-      where             = ['information for ' animalID];
+      %% Setup data source and update list
       [researcher, iResearcher] = obj.findResearcher(researcherID);
-      isNew = sum(strcmp({researcher.animals.ID}, animalID)) == 0;  
-
-      if isNew
-        template        = obj.tmplAnimal;
-        [list, gid]     = obj.copyTemplateInfo(template, 1, database, gid, where, researcher.Name);
-        obj.Researchers(iResearcher).animalsGID   = gid;
-        researcher      = obj.Researchers(iResearcher);
-      else
-        [list,~,template] = obj.pullAnimalList(researcherID);
+      [list, researcher, template] = obj.pullAnimalList(researcherID);
+      obj.Researchers(iResearcher).animals = list;
+      
+      owner = strsplit(animalID,'_');
+      if sum(strcmpi({obj.Researchers.ID}, owner{1})) == 0
+          error('All animal names have to start with a valid NetID of a researcher, i.e. "NetID_"')
+          % While the owner of an animal can change, the original creator of
+          % the entry must be a researcher with a NetID. This NetID becomes
+          % part of the primary key of the animal.
       end
       
-      %% Find the location at which to output information 
+      %% Find the location of the animal
+      % if it already exists:
       dataRow           = find(strcmpi({list.ID}, animalID));
       if numel(dataRow) > 1
         error('AnimalDatabase:pushAnimalInfo', 'More than one animal found with ID = %s for researcher %s.', animalID, researcherID);
       end
-      
-      %% Add a row for a new animal if necessary
+      % if it doesn't, make new 'animal'
       if isempty(dataRow)
         dataRow         = numel(list) + 1;
         for iField = 1:numel(template)
-          list(dataRow).(template(iField).identifier)       ...
+          animal.(template(iField).identifier)       ...
                         = obj.emptyForFormat(template(iField).data);
         end
-        list(dataRow).ID= animalID;
-        list(dataRow).whereAmI  = AnimalDatabase.ANI_HOME;
+        animal.ID = animalID;
+        animal.whereAmI  = AnimalDatabase.ANI_HOME;
+      else
+        animal = researcher.animals(dataRow);
       end
-      animal            = list(dataRow);
+
       
       %% Merge the specified information into the row data structure
       hasPlans          = isfield(template, 'futurePlans');
@@ -5130,22 +5131,16 @@ classdef AnimalDatabase < handle
       
       %% Write the entire row in string format
       animal.owner      = researcherID;
+      animal.imageFile = [];
       obj.Researchers(iResearcher).animals(dataRow) = animal;
       
-       %% insert the data into datajoint database
-        
+      %% insert the data into datajoint database
+
        % insert subject info
-        key_subj = struct(...
-           'user_id', animal.owner, ...
-           'subject_id', animal.ID);
-       
-        subj = key_subj;
-       
-        if isempty(fetch(subject.Subject & key_subj))
-            exists = 0;
-        else 
-            exists = 1;
-        end
+        key_subj = struct('subject_fullname', animal.ID);
+        subj = key_subj;       
+        exists = ~isempty(fetch(subject.Subject & key_subj));
+
         
         if ~isempty(animal.sex)
             if exists
@@ -5197,6 +5192,11 @@ classdef AnimalDatabase < handle
         end
 
         if ~isempty(animal.genotype)
+            known_lines = fetch(subject.Line, 'line');
+            if sum(strcmpi({known_lines.line}, animal.genotype)) == 0
+                disp(animal.genotype)
+                error('This line does not exist in the database!')
+            end
             if exists
                 update(subject.Subject & key_subj, 'line', animal.genotype)
             else
@@ -5276,20 +5276,32 @@ classdef AnimalDatabase < handle
         end
         
         % insert subject actItem
+        % act items are either automatic [weight] or manual requests.
+        % Depending on that, they are inserted into different tables
         if ~isempty(animal.actItems)
             for i = 1:length(animal.actItems)
                 subj_act_item = key_subj;
-                action_string = animal.actItems{i};
-                if length(action_string) > 40
-                    subj_act_item.act_item = 'Weight too low';
-                elseif strfind(action_string, '[Yes]')>0
-                    subj_act_item.act_item = action_string(8:end);
-                else
-                    subj_act_item.act_item = action_string;
-                end
                 
-                if isempty(fetch(subject.SubjectActItem & subj_act_item))
-                    insert(subject.SubjectActItem, subj_act_item)
+                action_string = animal.actItems{i};
+                subj_act_item.notification_message = action_string;
+                known_actitems = fetch(subject.ActItem);
+                if sum( strcmpi({known_actitems.act_item}, action_string) ) == 1
+                    % insert into manual table, only if it doesn't exist
+                    % already
+                    if isempty(fetch(subject.SubjectActionManual & subj_act_item))
+                        insert(subject.SubjectActionManual, subj_act_item)
+                    end
+                else
+                    % insert into automatic table
+                    % also needed: notification date
+                    a = strsplit(subj_act_item.notification_message, ' on ');
+                    notedate = datevec(a{2});
+                    notedate_format = sprintf('%d-%02d-%02d %02d:%02d:%02d', notedate(1), notedate(2), notedate(3), notedate(4), notedate(5), notedate(6));
+                    subj_act_item.notification_date = notedate_format;
+                    test = fetch(subject.SubjectActionAutomatic & subj_act_item);
+                    if length(test) == 0
+                        insert(subject.SubjectActionAutomatic, subj_act_item)
+                    end
                 end
             end
         end
@@ -5299,22 +5311,21 @@ classdef AnimalDatabase < handle
     %----- Write logging information for *today* for a single animal; specify as pairs e.g. 'received', 1.2, 'weight', 21.4, ...
     function [logs, animal, researcher] = pushDailyInfo(obj, researcherID, animalID, varargin)
       varargin          = AnimalDatabase.checkPairInput(varargin, 'Daily information to set');
-      where             = ['daily logs for ' animalID];
-      template          = obj.tmplDailyInfo;
       
-      researcher      = obj.findResearcher(researcherID);
-      if ~isstruct(researcher.animals)
-        obj.pullAnimalList(researcherID);  %if not, let pullAnimalList populate the obj.Researcher.animal thing.
-        researcher      = obj.findResearcher(researcherID); %and select the right one.
-      end
+      %% Setup data source 
+      [researcher, iResearcher] = obj.findResearcher(researcherID);
+      [list, researcher, ~] = obj.pullAnimalList(researcherID);
+      obj.Researchers(iResearcher).animals = list;
       animal            = researcher.animals(strcmpi({researcher.animals.ID}, animalID));
+      template          = obj.tmplDailyInfo;
       logs = obj.pullDailyLogs(researcherID, animalID);
       
-      %% Find the location at which to output information for today
+      %% Find the location "dataRow" at which to output information for today
       % N.B. TODO This doesn't handle going over the edge of midnight... we assume behavior is run
       % in normal hours only (for now)
-      dates             = arrayfun(@(x) datenum(x.date), logs);
+      dates             = arrayfun(@(x) datenum(x.date), logs);  %transforms date to dayse-since-January 0, 0000
       thisDate          = floor(now());
+      where             = ['daily logs for ' animalID]; %string for the error/warning message.
       if isempty(dates)
         relDays         = 1;
       else
@@ -5385,23 +5396,20 @@ classdef AnimalDatabase < handle
       log_date = sprintf('%d-%02d-%02d', filledLog.date(1), filledLog.date(2), filledLog.date(3));
       if ~isempty(filledLog.weight)
         weighing = struct( ...
-            'user_id', researcherID, ...
-            'subject_id', animalID, ...
+            'weigh_person', researcherID, ...
+            'subject_fullname', animalID, ...
             'weighing_time', datestr(now, 'yyyy-mm-dd HH:MM:ss'), ...
-            'weight', filledLog.weight, ...
-            'weight_notice', filledLog.comments ...
+            'weight', filledLog.weight ...
             );
-        
         if ~isempty(filledLog.weighLocation)
             loc.location = filledLog.weighLocation;
             inserti(lab.Location, loc)
             weighing.location = loc.location;
-        end
-        
-        if ~isempty(filledLog.weighPerson)
-            user.user_id = filledLog.weighPerson;
-            inserti(lab.User, user)
-            weighing.weigh_person = user.user_id;
+        else
+            %if nothing is given as location, take computer name
+            loc.location = char(getHostName(java.net.InetAddress.getLocalHost));
+            inserti(lab.Location, loc)
+            weighing.location = loc.location;
         end
         insert(action.Weighing, weighing)
       end
@@ -5409,8 +5417,7 @@ classdef AnimalDatabase < handle
       
       % insert water administration information
       water_info_key = struct( ...
-        'user_id', researcherID, ...
-        'subject_id', animalID, ...
+        'subject_fullname', animalID, ...
         'administration_date', log_date...
         );
       water_info = water_info_key;
@@ -5448,8 +5455,7 @@ classdef AnimalDatabase < handle
       
       % insert subject health status information
       health_status_key = struct( ...
-        'user_id', researcherID, ...
-        'subject_id', animalID, ...
+        'subject_fullname', animalID, ...
         'status_date', log_date...
         );
     
@@ -5487,24 +5493,23 @@ classdef AnimalDatabase < handle
           end
       end
       
-      % insert action item
+      % insert action item into the record
       if ~isempty(filledLog.actions)
           action_item = struct(...
-              'user_id', researcherID, ...
-              'subject_id', animalID, ...
+              'subject_fullname', animalID, ...
               'action_date', log_date ...
               );
-          for iaction = 1:length(filledLog.actions)
+          [Nactions, ~] = size(filledLog.actions);
+          for iaction = 1:Nactions
               action_item.action_id = iaction;
               action_item_key = action_item;
-              if isempty(fetch(action.ActionItem & action_item_key))
-                  if ischar(filledLog.actions{iaction})
-                      action_string = filledLog.actions{iaction};
-                  else
-                      action_string = char(filledLog.actions{iaction}.string);
+              if isempty(fetch(action.ActionRecord & action_item_key))
+                  action_raw = {filledLog.actions{iaction,:}};
+                  if ~strcmp(action_raw{1}, 'Unknown')
+                      action_string = ['[' char(action_raw{1}), '] ', action_raw{2}];
+                      action_item.action = action_string;
+                      insert(action.ActionRecord, action_item)
                   end
-                  action_item.action = action_string;
-                  insert(action.ActionItem, action_item)
               end
           end
       end
@@ -5512,8 +5517,7 @@ classdef AnimalDatabase < handle
       % ingest session
         if ~isnan(filledLog.trainStart) && ~isempty(filledLog.mainMazeID) % TODO: ingest trainings without mainMazeID
             session = struct(...
-              'user_id', researcherID, ...
-              'subject_id', animalID, ...
+              'subject_fullname', animalID, ...
               'session_date', log_date ...
               );
             
@@ -5534,10 +5538,8 @@ classdef AnimalDatabase < handle
             inserti(lab.Location, key_location)
 
             session.location = filledLog.rigName;
-            session.user_id = researcherID;
             session.task = 'Towers';
             session.level = filledLog.mainMazeID;
-            session.set_id = 1;
             session.stimulus_bank = filledLog.stimulusBank;
             session.stimulus_set = filledLog.stimulusSet;
             session.ball_squal = filledLog.squal;
