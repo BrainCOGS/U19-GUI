@@ -303,8 +303,8 @@ classdef AnimalDatabase < handle
         subject_info    = subjects.fetch('subject_fullname', 'head_plate_mark', 'location', 'protocol', 'sex', 'dob', 'line', 'initial_weight');
         cageinfo        = fetch(subjects * subject.CagingStatus, 'subject_fullname', 'cage');    
         subjectstatus   = fetch(subjects * action.SubjectStatus, 'subject_fullname', 'subject_status', 'schedule', 'effective_date', 'water_per_day');       
-        actionManual_info = fetch( subjects * subject.SubjectActionManual, 'subject_fullname', 'act_item');
-        actionAutomatic_info = fetch( subjects * subject.SubjectActionAutomatic, 'subject_fullname', 'notification_date', 'notification_message');
+        actionManual_info = fetch( subjects * subject.SubjectActionManual, 'subject_fullname', 'act_item', 'valid_until_date');
+        actionAutomatic_info = fetch( subjects * subject.SubjectActionAutomatic, 'subject_fullname', 'notification_date', 'notification_message', 'valid_until_date');
         
         % This is queried ONLY for the latest entry 
         water_info      = fetch( ...
@@ -406,16 +406,20 @@ classdef AnimalDatabase < handle
             ind = find(strcmp({actionManual_info.subject_fullname}, subj));
             if ~isempty(ind)
                 for single_idx = ind
-                    act{counter} = actionManual_info(single_idx).act_item;
-                    counter = counter + 1;
+                    if isempty(actionManual_info(single_idx).valid_until_date)   %Only take entries that are still active
+                        act{counter} = actionManual_info(single_idx).act_item;
+                        counter = counter + 1;
+                    end
                 end
                 
             end
             ind = find(strcmp({actionAutomatic_info.subject_fullname}, subj));
             if ~isempty(ind)
                 for single_idx = ind
-                    act{counter} = actionAutomatic_info(single_idx).notification_message;
-                    counter = counter + 1;
+                    if isempty(actionAutomatic_info(single_idx).valid_until_date)
+                        act{counter} = actionAutomatic_info(single_idx).notification_message;
+                        counter = counter + 1;
+                    end
                 end
                 
             end
@@ -4434,8 +4438,8 @@ classdef AnimalDatabase < handle
         [~,researcher]    = obj.pullAnimalList(researcherID);
       else
         researcher        = obj.findResearcher(researcherID);
-        if isempty(researcher.animals)
-          [~,researcher]  = obj.pullAnimalList(researcherID);
+        if ~isfield(researcher, 'animals')
+          [~, researcher, ~] = pullAnimalList(obj, researcherID);
         end
       end
       
@@ -4675,7 +4679,7 @@ classdef AnimalDatabase < handle
     %----- Ensure that a daily information sheet exists for the given researcher and animal, creating one if necessary
     function [researcher] = openDailyLogs(obj, researcherID, animalID)
         
-        [logs, animals, template] = pullAnimalList(obj, researcherID);          %CHECKME!
+        [logs, animals, template] = pullAnimalList(obj, researcherID);
         researcher.animals = animals;
 
     end
@@ -5207,6 +5211,13 @@ classdef AnimalDatabase < handle
         end
         
         if ~exists
+            if ~isfield(subj, 'subject_nickname')
+                a = strsplit(subj.subject_fullname, '_');
+                subj.subject_nickname = a{2};
+            end
+            if ~isfield(subj, 'user_id')
+                subj.user_id = researcher.ID;
+            end
             insert(subject.Subject, subj)
         end
         
@@ -5239,7 +5250,7 @@ classdef AnimalDatabase < handle
                 key_subj_status.effective_date = sprintf(...
                     '%d-%02d-%02d', effective(1), effective(2), effective(3));
                 subj_status = key_subj_status;
-                subj_status.subject_status = animal.status{i}.char;
+                subj_status.subject_status = animal.status{end}.char;
                 
                 if strcmp(subj_status.subject_status, 'Dead')
                     if ~isempty(fetch(subject.Death & key_subj))
@@ -5250,6 +5261,7 @@ classdef AnimalDatabase < handle
                         death.death_date = key_subj_status.effective_date;
                         insert(subject.Death, death)
                     end
+                    update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
                     return
                 end
                 
@@ -5278,33 +5290,49 @@ classdef AnimalDatabase < handle
         % insert subject actItem
         % act items are either automatic [weight] or manual requests.
         % Depending on that, they are inserted into different tables
-        if ~isempty(animal.actItems)
+        if ~isempty(animal.actItems)    %if action item exists
             for i = 1:length(animal.actItems)
                 subj_act_item = key_subj;
                 
                 action_string = animal.actItems{i};
-                subj_act_item.notification_message = action_string;
                 known_actitems = fetch(subject.ActItem);
                 if sum( strcmpi({known_actitems.act_item}, action_string) ) == 1
                     % insert into manual table, only if it doesn't exist
                     % already
+                    subj_act_item.act_item = action_string;
+                    subj_act_item.notification_date = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
                     if isempty(fetch(subject.SubjectActionManual & subj_act_item))
-                        insert(subject.SubjectActionManual, subj_act_item)
+                        insert(subject.SubjectActionManual, subj_act_item);
                     end
                 else
                     % insert into automatic table
                     % also needed: notification date
+                    subj_act_item.notification_message = action_string;
                     a = strsplit(subj_act_item.notification_message, ' on ');
                     notedate = datevec(a{2});
                     notedate_format = sprintf('%d-%02d-%02d %02d:%02d:%02d', notedate(1), notedate(2), notedate(3), notedate(4), notedate(5), notedate(6));
                     subj_act_item.notification_date = notedate_format;
-                    test = fetch(subject.SubjectActionAutomatic & subj_act_item);
-                    if length(test) == 0
-                        insert(subject.SubjectActionAutomatic, subj_act_item)
+                    if isempty(fetch(subject.SubjectActionAutomatic & subj_act_item))
+                        insert(subject.SubjectActionAutomatic, subj_act_item);
                     end
                 end
             end
+        else % if the act_item matlab struct is empty,
+             % but there exists a valid entry. 
+             test = subject.SubjectActionAutomatic & key_subj & 'valid_until_date IS NULL';
+             if ~isempty(fetch(test))
+                d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
+                update(test, 'valid_until_date', d);
+             end
+             
+             test = subject.SubjectActionManual & key_subj & 'valid_until_date IS NULL';
+             if ~isempty(fetch(test))
+                d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
+                update(test, 'valid_until_date', d);
+             end
+%            del(subject.SubjectActionManual & key_subj);
         end
+        
             
     end
     
@@ -5499,14 +5527,14 @@ classdef AnimalDatabase < handle
               'subject_fullname', animalID, ...
               'action_date', log_date ...
               );
-          [Nactions, ~] = size(filledLog.actions);
+          Nactions = length(filledLog.actions);
           for iaction = 1:Nactions
               action_item.action_id = iaction;
               action_item_key = action_item;
               if isempty(fetch(action.ActionRecord & action_item_key))
-                  action_raw = {filledLog.actions{iaction,:}};
-                  if ~strcmp(action_raw{1}, 'Unknown')
-                      action_string = ['[' char(action_raw{1}), '] ', action_raw{2}];
+                  action_raw = filledLog.actions{iaction};
+                  if ~strcmp(action_raw, 'Unknown')
+                      action_string = action_raw;
                       action_item.action = action_string;
                       insert(action.ActionRecord, action_item)
                   end
