@@ -5300,8 +5300,8 @@ classdef AnimalDatabase < handle
                     % insert into manual table, only if it doesn't exist
                     % already
                     subj_act_item.act_item = action_string;
-                    subj_act_item.notification_date = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
                     if isempty(fetch(subject.SubjectActionManual & subj_act_item))
+                        subj_act_item.notification_date = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
                         insert(subject.SubjectActionManual, subj_act_item);
                     end
                 else
