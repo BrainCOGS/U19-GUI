@@ -5356,18 +5356,33 @@ classdef AnimalDatabase < handle
             end
         else % if the act_item matlab struct is empty,
              % but there exists a valid entry. 
+             d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
+             
              test = subject.SubjectActionAutomatic & key_subj & 'valid_until_date IS NULL';
              if ~isempty(fetch(test))
-                d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
-                update(test, 'valid_until_date', d);
+                test_data = fetch(test);
+                if length(test_data) > 1
+                    for idx = 1:length(test_data)
+                        entry = subject.SubjectActionAutomatic & test_data(idx);
+                        update(entry, 'valid_until_date', d);
+                    end
+                else
+                    update(test, 'valid_until_date', d);
+                end
              end
              
              test = subject.SubjectActionManual & key_subj & 'valid_until_date IS NULL';
              if ~isempty(fetch(test))
-                d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
-                update(test, 'valid_until_date', d);
+                test_data = fetch(test);
+                if length(test_data) > 1
+                    for idx = 1:length(test_data)
+                        entry = subject.SubjectActionManual & test_data(idx);
+                        update(entry, 'valid_until_date', d);
+                    end
+                else
+                    update(test, 'valid_until_date', d);
+                end
              end
-%            del(subject.SubjectActionManual & key_subj);
         end
         
             
