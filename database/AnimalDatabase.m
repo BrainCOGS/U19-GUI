@@ -5298,12 +5298,16 @@ classdef AnimalDatabase < handle
                         death.death_date = key_subj_status.effective_date;
                         insert(subject.Death, death)
                     end
-                    update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
-                    return
+                    
+                    if isempty(fetch(action.SubjectStatus & key_subj_status))
+                        insert(action.SubjectStatus, subj_status)
+                    else
+                        update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
+                    end
                 end
                 
                 if ismember(subj_status.subject_status, {'Missing', 'Unknown'})
-                    if ~isempty(fetch(action.SubjectStatus & key_subj_status))
+                    if isempty(fetch(action.SubjectStatus & key_subj_status))
                         insert(action.SubjectStatus, subj_status)
                     else
                         update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
