@@ -47,23 +47,29 @@ All writing into the spreadsheets happens in the functions
 * *writeTrainingDataToDatabase.m* (uses *pullAnimalList* and *pushDailyInfo* of the animalDatabase)
 
 The notification system is called periodically and the GUI sends out eMails and messages. This happens via the files
-* *checkActionItems.m *
+* *checkActionItems.m*
 * *checkCageReturn.m*
-* *checkMouseWeighing.m *
+* *checkMouseWeighing.m*
+
+I also added a set of helper function that make the use of dj simpler:
+* *getResearcherDJ* return researcher structure from researcherID
+* *getTemplateDJ*, return template structure
+* getAnimalDJ*, return animal structure of a given researcherID
+
 
 ## Work to do
 * Remove the delete mouse button (or update: only works if you have the required user rights).
 * Remove the check in/out button.
 * Write either a new GUI to add a new user, or alternatively add “new user” field to existing GUI, so that new users don’t have to be entered with SequelPro.
-* Clean up code. This repo started as a branch of tankmousevr. I think the only relevant stuff for the GUI is in /database/. AnimalDatabase.m should be ok, but need to go through other code.
+* Clean up code. This repo started as a branch of tankmousevr. I think the only relevant stuff for the GUI is in /database/. AnimalDatabase.m should be ok, but need to go through other code. I have also tried to remove all google-stuff, but there might be dead wood left. Can this be cleaned more effectively?
 * Add additional feature: If animal reaches endpoint via 1910 protocol. Automatically and immediately send emails to people specified in a list (new dj table).
 
 ## Known issues/features
 * Adding a new line will throw an error. This is on purpose to avoid typoes and enforce standards in gene/line identity. Should we add dialog to add new line?
 
 ## Health Check
-* I checked add mouse, dead mouse, add action items, body weight, lines… Can you break it?
-* To play with, fiddle with ‘testuser’
+* I checked add mouse, dead mouse, add action items, body weight, lines… Can you break it? Try adding and removing animals from/to the graveyard. Make sure notification systems works.
+* Fiddle with ‘testuser’. Make sure to use your own email, as the AnimalDatabase will send out these notifications.
 
 
 
