@@ -69,6 +69,6 @@ I also added a set of helper function that make the use of dj simpler:
 ## Known issues/features
 * Adding a new line will throw an error. This is on purpose to avoid typoes and enforce standards in gene/line identity. Should we add dialog to add new line?
 
-## Health Check
+# Health Check
 * I checked add mouse, dead mouse, add action items, body weight, lines… Can you break it? Try adding and removing animals from/to the graveyard. Make sure notification systems works.
-* Fiddle with ‘testuser’. Make sure to use your own email, as the AnimalDatabase will send out these notifications.
+* Fiddle with *db.gui('testuser’)*. Make sure to use your own email, as the AnimalDatabase will send out these notifications.
