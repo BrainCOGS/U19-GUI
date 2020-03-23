@@ -2460,7 +2460,7 @@ classdef AnimalDatabase < handle
     
     %----- Called whenever an emergency-level status is redacted; can only be done by the owner of the animal
     function somebodyRedacted(obj, researcher, animal, previousInfo)
-      notifyAnimalStatusChange(animal,'tech',previousInfo,obj);
+      notifyAnimalStatusChange(animal,'tech',previousInfo.status,obj);
     end
     
     
@@ -5208,6 +5208,7 @@ classdef AnimalDatabase < handle
             end
         end
 
+       %  CHECK THIS whereAmI is a username, not a place!
         if ~isempty(animal.whereAmI)
             if exists
                 update(subject.Subject & key_subj, 'location', animal.whereAmI)
