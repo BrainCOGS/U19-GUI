@@ -2460,7 +2460,7 @@ classdef AnimalDatabase < handle
     
     %----- Called whenever an emergency-level status is redacted; can only be done by the owner of the animal
     function somebodyRedacted(obj, researcher, animal, previousInfo)
-      notifyAnimalStatusChange(animal,'tech',previousInfo,obj);
+      notifyAnimalStatusChange(animal,'tech',previousInfo.status,obj);
     end
     
     
@@ -3387,6 +3387,40 @@ classdef AnimalDatabase < handle
       end
       
       obj.selectAnimalGroup([], [], personID, forFinalize);
+    end
+    
+        %----- Transfer the location of selected cages to the given holder
+    function transferAnimals(obj, hObject, event, holderID, closeFig, personID, forFinalize)
+      %% Loop through all selected groups of animals
+      btnGroup        = obj.btn.aniGroup(arrayfun(@(x) get(x,'Value'), obj.btn.aniGroup) == 1);
+      for iGrp = 1:numel(btnGroup)
+        info          = get(btnGroup(iGrp), 'UserData');
+        groupAni      = info{2};
+        
+        %% Push the new location of these animals 
+        researcherID  = unique({groupAni.owner});
+        if numel(researcherID) ~= 1
+          error('AnimalDatabase:transferAnimals', 'Invalid researcher (owner) ID for animals: %s', strjoin({groupAni.ID}));
+        end
+        obj.pushBatchInfo(researcherID{:}, {groupAni.ID}, 'whereAmI', holderID);
+        
+        %% Record the new location for further interactions with the GUI
+        [groupAni.whereAmI] = deal(holderID);
+        info{1}             = obj.whereIsThisThing(groupAni, personID);
+        info{2}             = groupAni;
+        set(btnGroup(iGrp), 'UserData', info);
+      end
+      
+      %% Close the GUI figure if so desired
+      if isempty(closeFig)
+        obj.selectAnimalGroup([], [], personID, forFinalize);
+      else
+        delete(closeFig);
+        if strcmpi(get(obj.axs.aniImage,'Visible'), 'off')
+          delete( get(obj.tbl.aniData, 'Children') );
+          delete( get(obj.tbl.aniDaily, 'Children') );
+        end
+      end
     end
     
     %----- Transfer the location of selected cages to the given holder
@@ -4439,7 +4473,8 @@ classdef AnimalDatabase < handle
       else
         researcher        = obj.findResearcher(researcherID);
         if ~isfield(researcher, 'animals')
-          [~, researcher, ~] = pullAnimalList(obj, researcherID);
+          [animals, researcher, ~] = pullAnimalList(obj, researcherID);
+          researcher.animals = animals;
         end
       end
       
@@ -4996,10 +5031,12 @@ classdef AnimalDatabase < handle
             end
             [Nactions, ~] = size(dj_tmp(log_idx).actions);                     % pull actions
             action_tmp = dj_tmp(log_idx).actions;
-            action_tmp{Nactions+1,1} = relevant_actions_info(i).action_id;  % append new action  
+            action_tmp{Nactions+1,1} = relevant_actions_info(i).action_id;  % jsut initialize. Later 1 = YES etc. (see YesNoMaybe)
             this_action = relevant_actions_info(i).action;
             if contains(this_action,']')                                    % get rid of [Yes]/[No]
                 this_action_clean = strsplit(this_action, '] ');
+                S = this_action_clean{1};
+                action_tmp{Nactions+1,1} = YesNoMaybe(S(isstrprop(S,'alpha')));
                 action_tmp{Nactions+1,2} = this_action_clean{2};
             else
                 action_tmp{Nactions+1,2} = this_action;
@@ -5171,6 +5208,7 @@ classdef AnimalDatabase < handle
             end
         end
 
+       %  CHECK THIS whereAmI is a username, not a place!
         if ~isempty(animal.whereAmI)
             if exists
                 update(subject.Subject & key_subj, 'location', animal.whereAmI)
@@ -5261,12 +5299,16 @@ classdef AnimalDatabase < handle
                         death.death_date = key_subj_status.effective_date;
                         insert(subject.Death, death)
                     end
-                    update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
-                    return
+                    
+                    if isempty(fetch(action.SubjectStatus & key_subj_status))
+                        insert(action.SubjectStatus, subj_status)
+                    else
+                        update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
+                    end
                 end
                 
                 if ismember(subj_status.subject_status, {'Missing', 'Unknown'})
-                    if ~isempty(fetch(action.SubjectStatus & key_subj_status))
+                    if isempty(fetch(action.SubjectStatus & key_subj_status))
                         insert(action.SubjectStatus, subj_status)
                     else
                         update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
@@ -5319,18 +5361,33 @@ classdef AnimalDatabase < handle
             end
         else % if the act_item matlab struct is empty,
              % but there exists a valid entry. 
+             d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
+             
              test = subject.SubjectActionAutomatic & key_subj & 'valid_until_date IS NULL';
              if ~isempty(fetch(test))
-                d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
-                update(test, 'valid_until_date', d);
+                test_data = fetch(test);
+                if length(test_data) > 1
+                    for idx = 1:length(test_data)
+                        entry = subject.SubjectActionAutomatic & test_data(idx);
+                        update(entry, 'valid_until_date', d);
+                    end
+                else
+                    update(test, 'valid_until_date', d);
+                end
              end
              
              test = subject.SubjectActionManual & key_subj & 'valid_until_date IS NULL';
              if ~isempty(fetch(test))
-                d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
-                update(test, 'valid_until_date', d);
+                test_data = fetch(test);
+                if length(test_data) > 1
+                    for idx = 1:length(test_data)
+                        entry = subject.SubjectActionManual & test_data(idx);
+                        update(entry, 'valid_until_date', d);
+                    end
+                else
+                    update(test, 'valid_until_date', d);
+                end
              end
-%            del(subject.SubjectActionManual & key_subj);
         end
         
             
@@ -5347,11 +5404,15 @@ classdef AnimalDatabase < handle
       animal            = researcher.animals(strcmpi({researcher.animals.ID}, animalID));
       template          = obj.tmplDailyInfo;
       logs = obj.pullDailyLogs(researcherID, animalID);
-      
+
       %% Find the location "dataRow" at which to output information for today
       % N.B. TODO This doesn't handle going over the edge of midnight... we assume behavior is run
       % in normal hours only (for now)
-      dates             = arrayfun(@(x) datenum(x.date), logs);  %transforms date to dayse-since-January 0, 0000
+      if isempty(logs(1).date)
+          dates = [];
+      else
+          dates             = arrayfun(@(x) datenum(x.date), logs);  %transforms date to dayse-since-January 0, 0000
+      end      
       thisDate          = floor(now());
       where             = ['daily logs for ' animalID]; %string for the error/warning message.
       if isempty(dates)
@@ -5578,6 +5639,48 @@ classdef AnimalDatabase < handle
 
     end
 
+    
+    %----- Write one column of animal-specific information for multiple *existing* animals
+    function pushBatchInfo(obj, researcherID, animalIDs, identifier, value)
+    % researcherID:  'testuser'
+    % animalIDs:     cell array 1xN with strings
+    % identifier:    'whereAmI'    [what is to be updated]
+    % value:         
+    
+    %% Setup data source
+      [list,~,template] = obj.pullAnimalList(researcherID);
+
+      
+      %% Find the location at which to output information 
+      dataRow           = cellfun(@(x) find(strcmpi(x,{list.ID})), animalIDs, 'UniformOutput', false);
+      if any(cellfun(@isempty, dataRow))
+        error('AnimalDatabase:pushBatchInfo', 'Animal(s) not found in database for researcher %s: %s', researcherID, strjoin(animalIDs(cellfun(@isempty, dataRow)), ', '));
+      end
+      dataRow           = [dataRow{:}];
+      
+      dataCol           = find(strcmp({template.identifier}, identifier));
+      if numel(dataCol) ~= 1
+        error('AnimalDatabase:pushBatchInfo', 'Invalid field %s to write.', identifier);
+      end
+      template          = template(dataCol);
+      
+      %% Retrieve the column to be written, and update rows for target animals
+      data              = {list.(template.identifier)};
+      if iscell(value)
+        data(dataRow)   = value;
+      else
+        [data{dataRow}] = deal(value);
+      end
+      
+      %% Update the database
+      for idx = 1: all_entries
+          animal = subject.Subject & ['subject_fullname = "', animalIDs{idx}, '"'];
+          update(animal, identifyer, value(idx))
+      end
+      
+    end
+    
+    
     %----- Display a GUI for viewing and interacting with the database plus daily information
     function gui(obj, personID)
       if nargin < 2
