@@ -8,11 +8,13 @@ This repository contains the source code of MATLAB GUI of the animal and behavio
 * Health checks done (can be removed once we are happy).
 
 # Startup
-Start matlab, add U19-pipeline-matlab to the search path and add U19-GUI to the search patch
+Start matlab, add 
+* U19-pipeline-matlab 
+* U19-GUI
+to the search patch. 
 
-# Code documentation
-## General use
-This interface allows for programmatic access and update of the contained data. In your program you should first create an instance of the database to interact with:
+# General use
+The AnimalDatabase allows for programmatic access and update of the contained data. In your code, you should first create an instance of the database to interact with:
 
       dbase     = AnimalDatabase();                       % keep this object around for communications
       dbase.gui();                                        % user interface from which one can add/view animals
@@ -32,8 +34,9 @@ To write data to the database, use the following "push*" functions:
 
 And of course, you can also use all low-level datajoint functions.
 
+# Code documentation
 ## Code structure
-Some general comments about architecture of the GUI
+Some general comments about architecture of the GUI.
 
 All reading from the database is done via the functions
 * *pullAnimalList*
@@ -56,7 +59,6 @@ I also added a set of helper function that make the use of dj simpler:
 * *getTemplateDJ*, return template structure
 * getAnimalDJ*, return animal structure of a given researcherID
 
-
 ## Work to do
 * Remove the delete mouse button (or update: only works if you have the required user rights).
 * Remove the check in/out button.
@@ -70,6 +72,3 @@ I also added a set of helper function that make the use of dj simpler:
 ## Health Check
 * I checked add mouse, dead mouse, add action items, body weight, lines… Can you break it? Try adding and removing animals from/to the graveyard. Make sure notification systems works.
 * Fiddle with ‘testuser’. Make sure to use your own email, as the AnimalDatabase will send out these notifications.
-
-
-
