@@ -59,16 +59,15 @@ I also added a set of helper function that make the use of dj simpler:
 * *getTemplateDJ*, return template structure
 * getAnimalDJ*, return animal structure of a given researcherID
 
-## Work to do
-* Remove the delete mouse button (or update: only works if you have the required user rights).
-* Remove the check in/out button.
-* Write either a new GUI to add a new user, or alternatively add “new user” field to existing GUI, so that new users don’t have to be entered with SequelPro.
-* Clean up code. This repo started as a branch of tankmousevr. I think the only relevant stuff for the GUI is in /database/. AnimalDatabase.m should be ok, but need to go through other code. I have also tried to remove all google-stuff, but there might be dead wood left. Can this be cleaned more effectively?
-* Add additional feature: If animal reaches endpoint via 1910 protocol. Automatically and immediately send emails to people specified in a list (new dj table).
-
 ## Known issues/features
 * Adding a new line will throw an error. This is on purpose to avoid typoes and enforce standards in gene/line identity. Should we add dialog to add new line?
 
-# Health Check
-* I checked add mouse, dead mouse, add action items, body weight, lines… Can you break it? Try adding and removing animals from/to the graveyard. Make sure notification systems works.
-* Fiddle with *db.gui('testuser’)*. Make sure to use your own email, as the AnimalDatabase will send out these notifications.
+# Work to do
+This is sorted by importance:
+1. Health checks, i.e. play with with *db.gui('testuser’)*. In the GUI, I checked adding mouse, dead mouse, add action items, body weight, lines… Try adding and removing animals from/to the graveyard. Make sure notification systems works etc.
+1. Add additional feature (per LAR request): If animal reaches endpoint via 1910 protocol. Automatically and immediately send emails to people specified in a list (new dj table).
+1. In the GUI, either remove the delete mouse button, or update the notification with a message that it "only works if you have the required user rights".
+1. In the GUI, remove the check in/out button. Nobody is using it anymore.
+1. Write either a new GUI to add a new user, or alternatively add a “new user” button and form to existing GUI, so that new users don’t have to be entered with SequelPro.
+1. Clean up code. This repo started as a branch of *tankmousevr*. The only relevant stuff for the GUI should be in */database/*. *AnimalDatabase.m* should be ok, but we should go through the other code as well. I have also tried to remove all google-stuff, but there might be dead wood left. Can this be cleaned effectively?
+
