@@ -1,5 +1,5 @@
 # U19-GUI
-This repository contains the source code of MATLAB GUI of the animal and behavioral information. This is a brief documentation of
+This repository contains the sourcecode of the MATLAB GUI of the animal and behavioral database. This is a brief documentation of
 * Startup
 * Code use
 * Code structure
@@ -8,7 +8,7 @@ This repository contains the source code of MATLAB GUI of the animal and behavio
 * Health checks done (can be removed once we are happy).
 
 # Startup
-Start matlab, add 
+First, start matlab. Them add 
 * U19-pipeline-matlab 
 * U19-GUI
 to the search patch. 
@@ -44,7 +44,7 @@ All reading from the database is done via the functions
 * *pullDailyLogs*
 * And of course all dj-queries (e.g. for templates)
 
-All writing into the spreadsheets happens in the functions
+All writing into the database happens in the functions
 * *pushDailyInfo*
 * *pushAnimaInfo*
 * *writeTrainingDataToDatabase.m* (uses *pullAnimalList* and *pushDailyInfo* of the animalDatabase)
@@ -55,19 +55,19 @@ The notification system is called periodically and the GUI sends out eMails and 
 * *checkMouseWeighing.m*
 
 I also added a set of helper function that make the use of dj simpler:
-* *getResearcherDJ* return researcher structure from researcherID
-* *getTemplateDJ*, return template structure
-* getAnimalDJ*, return animal structure of a given researcherID
+* *getResearcherDJ* to return researcher structure from researcherID
+* *getTemplateDJ* to return template structure
+* *getAnimalDJ* to return animal structure of a given researcherID
 
 ## Known issues/features
-* Adding a new line will throw an error. This is on purpose to avoid typoes and enforce standards in gene/line identity. Should we add dialog to add new line?
+* Adding a new mouse-line for a mouse will throw an error. This is on purpose to avoid typos and enforce standards in gene/line naming. To do this more cracefully: should we add a dialog to add new line?
 
 # Work to do
 This is sorted by importance:
-1. Health checks, i.e. play with with *db.gui('testuser’)*. In the GUI, I checked adding mouse, dead mouse, add action items, body weight, lines… Try adding and removing animals from/to the graveyard. Make sure notification systems works etc.
+1. Do health checks, i.e. play with *db.gui('testuser’)*. In the GUI, I checked adding mouse, dead mouse, add action items, body weight, lines… This seemed fine. Try adding and removing animals from/to the graveyard. Make sure notification systems works etc.
 1. Add additional feature (per LAR request): If animal reaches endpoint via 1910 protocol. Automatically and immediately send emails to people specified in a list (new dj table).
 1. In the GUI, either remove the delete mouse button, or update the notification with a message that it "only works if you have the required user rights".
-1. In the GUI, remove the check in/out button. Nobody is using it anymore.
+1. In the GUI, remove the check in/out button. Nobody is using it.
 1. Write either a new GUI to add a new user, or alternatively add a “new user” button and form to existing GUI, so that new users don’t have to be entered with SequelPro.
 1. Clean up code. This repo started as a branch of *tankmousevr*. The only relevant stuff for the GUI should be in */database/*. *AnimalDatabase.m* should be ok, but we should go through the other code as well. I have also tried to remove all google-stuff, but there might be dead wood left. Can this be cleaned effectively?
 
