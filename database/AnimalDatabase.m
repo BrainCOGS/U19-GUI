@@ -1605,7 +1605,7 @@ classdef AnimalDatabase < handle
       set(obj.cnt.main      , 'Heights', [1.2*AnimalDatabase.GUI_BTNSIZE + 2*AnimalDatabase.GUI_BORDER, -1]);
       set(obj.cnt.config    , 'Widths' , [10*AnimalDatabase.GUI_BTNSIZE, -1]);
       set(obj.cnt.person    , 'Widths' , [4*AnimalDatabase.GUI_BTNSIZE, -1]);
-      set(obj.cnt.controls  , 'Widths' , [AnimalDatabase.GUI_BTNSIZE, -1, 7*AnimalDatabase.GUI_BTNSIZE, AnimalDatabase.GUI_BTNSIZE, 4*AnimalDatabase.GUI_BTNSIZE, 9.5*AnimalDatabase.GUI_BTNSIZE]);
+      set(obj.cnt.controls  , 'Widths' , [AnimalDatabase.GUI_BTNSIZE, -1, 7*AnimalDatabase.GUI_BTNSIZE, AnimalDatabase.GUI_BTNSIZE, 0, 9.5*AnimalDatabase.GUI_BTNSIZE]); 
       set(obj.cnt.data      , 'Widths' , [3*(1 + AnimalDatabase.MAX_ANI_GROUP)*elemSize + 0.5*AnimalDatabase.GUI_BTNSIZE, -1]);
       set(obj.cnt.overview  , 'Heights', [2*AnimalDatabase.GUI_BTNSIZE, -1]);
 
@@ -1721,7 +1721,7 @@ classdef AnimalDatabase < handle
       end
       
       %% Restore non-busy cursor
-      set(obj.btn.checkInOut, 'Enable', 'on', 'Callback', {@obj.checkoutGUI, personID});
+      %set(obj.btn.checkInOut, 'Enable', 'on', 'Callback', {@obj.checkoutGUI, personID});
       set(obj.btn.finalize, 'Callback', {@obj.areWeThereYet, personID});
 
       obj.checkUpdateTimer([], [], true);
@@ -2314,18 +2314,18 @@ classdef AnimalDatabase < handle
       iAnimal             = find(strcmpi({list.ID}, animalID));
       if isempty(iAnimal)
         %% Execute the callback that actually deletes the animal
-        obj.reallyDeleteAnimal(hObject, event, researcherID, animalID, ctrlID, ctrlDate, ctrlAni, iAnimal);
+        %obj.reallyDeleteAnimal(hObject, event, researcherID, animalID, ctrlID, ctrlDate, ctrlAni, iAnimal);
         
       else
         %% Create a warning message 
         ctrl              = get(obj.tbl.aniDaily, 'Children');
         ctrl              = get(ctrl(1), 'Children');
+        string_deletion = strcat("You don't have database admin rights to delete ", animalID, " of researcher ", researcherID, "!");
         set( ctrl   , 'Style'                   , 'text'                                                                              ...
-                    , 'String'                  , { ['You are about to delete animal ' animalID ' of researcher ' researcherID '! ']  ...
+                    , 'String'                  , { string_deletion  ...
                                                   , ''                                                                                ...
-                                                  [ 'This will destroy all records of it in the database, although the water logs '   ...
-                                                    'sheet will only be renamed with a "DELETED" prefix.'                             ...
-                                                  ] }                                                                                 ...
+                                                  "If this animal has to be deleted, ask the database administrator"                            ...
+                                                   }                                                                                 ...
                     , 'HorizontalAlignment'     , 'left'                                                                              ...
                     , 'FontSize'                , AnimalDatabase.GUI_FONT + 2                                                         ...
                     , 'ForegroundColor'         , AnimalDatabase.CLR_ALERT                                                            ...
@@ -2333,11 +2333,11 @@ classdef AnimalDatabase < handle
                     );
                   
         %% Change the callback of this button to require that the user confirm
-        set ( hObject                                               ...
-            , 'String'          , 'CONFIRM delete'                  ...
-            , 'ForegroundColor' , AnimalDatabase.CLR_ALERT          ...
-            , 'Callback'        , {@obj.reallyDeleteAnimal, researcherID, animalID, ctrlID, ctrlDate, ctrlAni, iAnimal}   ...
-            );
+        %set ( hObject                                               ...
+        %    , 'String'          , 'CONFIRM delete'                  ...
+        %    , 'ForegroundColor' , AnimalDatabase.CLR_ALERT          ...
+        %    , 'Callback'        , {@obj.reallyDeleteAnimal, researcherID, animalID, ctrlID, ctrlDate, ctrlAni, iAnimal}   ...
+        %    );
       end
     end
     
@@ -3552,7 +3552,7 @@ classdef AnimalDatabase < handle
       set(obj.cnt.main      , 'Heights', [1.2*AnimalDatabase.GUI_BTNSIZE + 2*AnimalDatabase.GUI_BORDER, -1]);
       set(obj.cnt.config    , 'Widths' , [10*AnimalDatabase.GUI_BTNSIZE, -1]);
       set(obj.cnt.person    , 'Widths' , [4*AnimalDatabase.GUI_BTNSIZE, -1]);
-      set(obj.cnt.controls  , 'Widths' , [AnimalDatabase.GUI_BTNSIZE, -1, 7*AnimalDatabase.GUI_BTNSIZE, AnimalDatabase.GUI_BTNSIZE, 4*AnimalDatabase.GUI_BTNSIZE, 9.5*AnimalDatabase.GUI_BTNSIZE]);
+      set(obj.cnt.controls  , 'Widths' , [AnimalDatabase.GUI_BTNSIZE, -1, 7*AnimalDatabase.GUI_BTNSIZE, AnimalDatabase.GUI_BTNSIZE, 0, 9.5*AnimalDatabase.GUI_BTNSIZE]);
       set(obj.cnt.data      , 'Widths' , [3*(1 + AnimalDatabase.MAX_ANI_GROUP)*elemSize + 0.5*AnimalDatabase.GUI_BTNSIZE, -1]);
       set(obj.cnt.overview  , 'Heights', [2*AnimalDatabase.GUI_BTNSIZE, -1]);
 
