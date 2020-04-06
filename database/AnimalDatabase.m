@@ -1570,9 +1570,14 @@ classdef AnimalDatabase < handle
                                     , 'XColor', [1 1 1]*0.7, 'YColor', [1 1 1]*0.7, 'XTick', [], 'YTick', [], 'Visible', 'off', 'Clipping', 'off' );
       obj.btn.weighMode       = uicontrol( 'Parent', obj.cnt.controls, 'FontSize', AnimalDatabase.GUI_FONT, 'Interruptible', 'off', 'BusyAction', 'cancel', 'UserData', 0 );
                                 uix.Empty( 'Parent', obj.cnt.controls );
-      obj.btn.checkInOut      = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'Check In/Out'                                              ...
-                                         , 'TooltipString', '<html><div style="font-size:14px">Selection screen to check in/out cages</div></html>'                 ...
-                                         , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );
+%     obj.btn.checkInOut      = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'Check In/Out'                                              ...
+%                                          , 'TooltipString', '<html><div style="font-size:14px">Selection screen to check in/out cages</div></html>'                 ...
+%                                          , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );
+
+       obj.btn.addUser          = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'AddUser'                                              ...
+                                         , 'TooltipString', '<html><div style="font-size:14px">Screen to input information about new users</div></html>'                 ...
+                                         , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );                               
+      
       obj.btn.finalize        = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'FINALIZE'                                                  ...
                                          , 'TooltipString', '<html><div style="font-size:14px">Check that all animals you''re responsible for have been handled</div></html>'                       ...
                                          , 'FontSize', AnimalDatabase.GUI_FONT, 'Interruptible', 'off', 'BusyAction', 'cancel' );
@@ -1605,7 +1610,7 @@ classdef AnimalDatabase < handle
       set(obj.cnt.main      , 'Heights', [1.2*AnimalDatabase.GUI_BTNSIZE + 2*AnimalDatabase.GUI_BORDER, -1]);
       set(obj.cnt.config    , 'Widths' , [10*AnimalDatabase.GUI_BTNSIZE, -1]);
       set(obj.cnt.person    , 'Widths' , [4*AnimalDatabase.GUI_BTNSIZE, -1]);
-      set(obj.cnt.controls  , 'Widths' , [AnimalDatabase.GUI_BTNSIZE, -1, 7*AnimalDatabase.GUI_BTNSIZE, AnimalDatabase.GUI_BTNSIZE, 0, 9.5*AnimalDatabase.GUI_BTNSIZE]); 
+      set(obj.cnt.controls  , 'Widths' , [AnimalDatabase.GUI_BTNSIZE, -1, 7*AnimalDatabase.GUI_BTNSIZE, AnimalDatabase.GUI_BTNSIZE, 4*AnimalDatabase.GUI_BTNSIZE, 9.5*AnimalDatabase.GUI_BTNSIZE]); 
       set(obj.cnt.data      , 'Widths' , [3*(1 + AnimalDatabase.MAX_ANI_GROUP)*elemSize + 0.5*AnimalDatabase.GUI_BTNSIZE, -1]);
       set(obj.cnt.overview  , 'Heights', [2*AnimalDatabase.GUI_BTNSIZE, -1]);
 
@@ -1722,6 +1727,7 @@ classdef AnimalDatabase < handle
       
       %% Restore non-busy cursor
       %set(obj.btn.checkInOut, 'Enable', 'on', 'Callback', {@obj.checkoutGUI, personID});
+      set(obj.btn.addUser, 'Enable', 'on', 'Callback', {@obj.callAddUser});
       set(obj.btn.finalize, 'Callback', {@obj.areWeThereYet, personID});
 
       obj.checkUpdateTimer([], [], true);
@@ -3517,9 +3523,15 @@ classdef AnimalDatabase < handle
                                     , 'XColor', [1 1 1]*0.7, 'YColor', [1 1 1]*0.7, 'XTick', [], 'YTick', [], 'Visible', 'off', 'Clipping', 'off' );
       obj.btn.weighMode       = uicontrol( 'Parent', obj.cnt.controls, 'FontSize', AnimalDatabase.GUI_FONT, 'Interruptible', 'off', 'BusyAction', 'cancel', 'UserData', 0 );
                                 uix.Empty( 'Parent', obj.cnt.controls );
-      obj.btn.checkInOut      = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'Check In/Out'                                              ...
-                                         , 'TooltipString', '<html><div style="font-size:14px">Selection screen to check in/out cages</div></html>'                 ...
-                                         , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );
+      
+     %obj.btn.checkInOut      = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'Check In/Out'                                              ...
+     %                                   , 'TooltipString', '<html><div style="font-size:14px">Selection screen to check in/out cages</div></html>'                 ...
+     %                                   , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );
+                                     
+     obj.btn.addUser          = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'AddUser'                                              ...
+                                         , 'TooltipString', '<html><div style="font-size:14px">Screen to input information about new users</div></html>'                 ...
+                                         , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );                               
+      
       obj.btn.finalize        = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'FINALIZE'                                                  ...
                                          , 'TooltipString', '<html><div style="font-size:14px">Check that all animals you''re responsible for have been handled</div></html>'                       ...
                                          , 'FontSize', AnimalDatabase.GUI_FONT, 'Interruptible', 'off', 'BusyAction', 'cancel' );
@@ -3552,7 +3564,7 @@ classdef AnimalDatabase < handle
       set(obj.cnt.main      , 'Heights', [1.2*AnimalDatabase.GUI_BTNSIZE + 2*AnimalDatabase.GUI_BORDER, -1]);
       set(obj.cnt.config    , 'Widths' , [10*AnimalDatabase.GUI_BTNSIZE, -1]);
       set(obj.cnt.person    , 'Widths' , [4*AnimalDatabase.GUI_BTNSIZE, -1]);
-      set(obj.cnt.controls  , 'Widths' , [AnimalDatabase.GUI_BTNSIZE, -1, 7*AnimalDatabase.GUI_BTNSIZE, AnimalDatabase.GUI_BTNSIZE, 0, 9.5*AnimalDatabase.GUI_BTNSIZE]);
+      set(obj.cnt.controls  , 'Widths' , [AnimalDatabase.GUI_BTNSIZE, -1, 7*AnimalDatabase.GUI_BTNSIZE, AnimalDatabase.GUI_BTNSIZE, 4*AnimalDatabase.GUI_BTNSIZE, 9.5*AnimalDatabase.GUI_BTNSIZE]);
       set(obj.cnt.data      , 'Widths' , [3*(1 + AnimalDatabase.MAX_ANI_GROUP)*elemSize + 0.5*AnimalDatabase.GUI_BTNSIZE, -1]);
       set(obj.cnt.overview  , 'Heights', [2*AnimalDatabase.GUI_BTNSIZE, -1]);
 
@@ -6082,6 +6094,12 @@ classdef AnimalDatabase < handle
       
       obj.okImDone(alreadyBusy);
       
+    end
+    
+    function callAddUser(obj, hObject, event)
+        
+        NewRecordsGUI();
+    
     end
     
   end
