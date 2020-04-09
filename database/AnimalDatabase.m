@@ -89,6 +89,8 @@ classdef AnimalDatabase < handle
     
     NUMBER_FORMAT         = '%.4g'
     DATE_FORMAT           = '%d/%d/%d'
+    DATE_FUTURE           = '2100-01-01 00:00:00'
+    DATE_ALMOST_FUTURE    = '2099-01-01 00:00:00'
     DATE_DISPLAY          = 'dd mmm yyyy, HH:MM:SS pm'
     DAYS_OF_WEEK          = {'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'}     % N.B. must match weekday() order
     DAYS_OF_WEEK_FULL     = {'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'};
@@ -191,6 +193,7 @@ classdef AnimalDatabase < handle
     DutyRoster
     Technicians
     Researchers
+    NumAnimalsUsers
     NotificationSettings
     
     %% Structures added to the "template" sheet must be added here with a "tmpl" prefix
@@ -303,8 +306,8 @@ classdef AnimalDatabase < handle
         subject_info    = subjects.fetch('subject_fullname', 'head_plate_mark', 'location', 'protocol', 'sex', 'dob', 'line', 'initial_weight');
         cageinfo        = fetch(subjects * subject.CagingStatus, 'subject_fullname', 'cage');    
         subjectstatus   = fetch(subjects * action.SubjectStatus, 'subject_fullname', 'subject_status', 'schedule', 'effective_date', 'water_per_day');       
-        actionManual_info = fetch( subjects * subject.SubjectActionManual, 'subject_fullname', 'act_item', 'valid_until_date');
-        actionAutomatic_info = fetch( subjects * subject.SubjectActionAutomatic, 'subject_fullname', 'notification_date', 'notification_message', 'valid_until_date');
+        actionManual_info = fetch( subjects * subject.SubjectActionManual & 'valid_until_date IS NULL', 'subject_fullname', 'act_item', 'valid_until_date');
+        actionAutomatic_info = fetch( subjects * subject.SubjectActionAutomatic & 'valid_until_date IS NULL', 'subject_fullname', 'notification_date', 'notification_message', 'valid_until_date');
         
         % This is queried ONLY for the latest entry 
         water_info      = fetch( ...
@@ -406,7 +409,12 @@ classdef AnimalDatabase < handle
             ind = find(strcmp({actionManual_info.subject_fullname}, subj));
             if ~isempty(ind)
                 for single_idx = ind
-                    if isempty(actionManual_info(single_idx).valid_until_date)   %Only take entries that are still active
+                    ac_date = actionManual_info(single_idx).valid_until_date;
+                    now_date = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
+                    empty_date = isempty(ac_date);
+                    greater_date = AnimalDatabase.datestr_comparison(ac_date, now_date);
+                    
+                    if empty_date || greater_date   %Only take entries that are still active
                         act{counter} = actionManual_info(single_idx).act_item;
                         counter = counter + 1;
                     end
@@ -472,18 +480,19 @@ classdef AnimalDatabase < handle
     %----- From DataJoint Database, reconstruct the struct of researcher
     function researcher = getResearcherDJ(researcherID, add_animals)
         
-        researcherID = AnimalDatabase.getResearcherNetID(researcherID);
-        
         if nargin < 2 || isempty(add_animals)
             add_animals = true;
         end
        
+        researcherID = AnimalDatabase.getResearcherNetID(researcherID);
+
+        
         field_order = {'Name', 'ID', 'Presence', 'DayCutOffTime', 'Phone', 'Carrier', ...
                        'Email', 'Slack', 'ContactVia', 'SecondaryContact', 'TechResponsibility', ...
                        'PI', 'Protocol', 'slackWebhook', 'animals'};
         researcher = fetch(lab.User*lab.UserLab*lab.UserProtocol*lab.Lab*lab.UserSecondaryContact ...
                            & struct('user_id', researcherID), '*');
-        
+
         % remove some unused fields
         researcher = rmfield(researcher, {'lab', 'institution', 'full_name', 'time_zone', 'address', ...
                                           'primary_tech', 'watering_logs'});
@@ -496,10 +505,63 @@ classdef AnimalDatabase < handle
         if add_animals
             researcher.animals = AnimalDatabase.getAnimalsDJ(researcherID);
         else
-            researcher.animals = [];
+            [researcher.animals] = deal([]);
         end
         researcher = orderfields(researcher, field_order);
 
+    end
+    
+    %----- From DataJoint Database, reconstruct the struct of researcher
+    function researchers = getAllResearcherDJ(struct_query, query_type)
+        %Function to get all researchers from u19_lab.user table
+        %ALS_correct
+        %
+        %Inputs
+        % struct_query = struct to filter fields of table struct_query 
+        %e.g. struct('primary_tech', "N/A");
+        % query_type   = Restriction operator (& or -)
+        %
+        %Outputs
+        % researchers = struct with results from query
+                
+        %ALS_ some places have a field DayCutoffTime and others DayCutOffTime
+        field_order = {'Name', 'ID', 'Presence', 'DayCutoffTime', 'Phone', 'Carrier', ...
+                       'Email', 'Slack', 'ContactVia', 'SecondaryContact', 'TechResponsibility', ...
+                       'PI', 'Protocol', 'slackWebhook'};
+                   
+        if query_type == '&'
+            researchers = fetch(lab.User*lab.UserLab*lab.UserProtocol*lab.Lab*lab.UserSecondaryContact ...
+                           & struct_query, '*');
+        else
+            researchers = fetch(lab.User*lab.UserLab*lab.UserProtocol*lab.Lab*lab.UserSecondaryContact ...
+                           - struct_query, '*');
+        end
+        
+        % remove some unused fields
+        researchers = rmfield(researchers, {'lab', 'institution', 'full_name', 'time_zone', 'address', ...
+                                          'primary_tech', 'watering_logs'});
+        % rename fields
+        researchers = cell2struct( ...
+            struct2cell(researchers), ...
+            {'ID', 'Protocol', 'Name', 'Email', 'Phone', 'Carrier', 'Slack', ...
+             'ContactVia', 'Presence', 'TechResponsibility', 'DayCutoffTime', 'slackWebhook', ...
+             'PI', 'SecondaryContact'});
+
+        researchers = orderfields(researchers, field_order);
+
+    end
+    
+    function num_animals = getNumAnimalsUsers()
+        %Function to get animal count from each lab user
+        %ALS_correct
+        %
+        %Outputs
+        % num_animals = struct with animal count for each lab user
+       
+        labtable = lab.User();
+        num_animals = fetch(labtable.aggr(subject.Subject, ...
+            'count(subject_fullname)->num_animals'), '*');
+        
     end
     
     %----- Load a series of overlaid images with transparency w.r.t. the desired background
@@ -652,6 +714,39 @@ classdef AnimalDatabase < handle
     end
     
     
+      function c = datestr_comparison(s1,s2)
+        % Function to compare dates (as strings) when there are in format YYYY-MM-DDHH:MM:SS
+        % datestr_comparison  - String comparison using C-convention
+        %	datestr_comparison(S1,S2) returns :
+        %    = 0	S1 less or identical to S2
+        %    = 1	S1 greater or equal than S2
+        l=min(length(s1), length(s2));
+        if l==0
+            if isempty(s1)
+                c=1;
+            else
+                c=0;
+            end
+            return
+        end
+        i=find(s1(1:l)~=s2(1:l));
+        if isempty(i)
+            if length(s1)<=length(s2)
+                c=0;
+            else
+                c=1;
+            end
+            return
+        end
+        i=i(1);
+        if s1(i)<=s2(i)
+            c=0;
+        else
+            c=1;
+        end
+      end
+    
+    
     %----- Parse a data table into structs with rows specifying field names 
     function specs = parseDataSpecs(data)
       %% Loop through rows and detect fields vs. sub-structures
@@ -748,9 +843,12 @@ classdef AnimalDatabase < handle
       elseif ischar(value)
         value         = {value, answer};
       else
-        value{end+1}  = answer;
+          if ~ismember(answer,value)
+            value{end+1}  = answer;
+          end
       end
       set(hTarget, 'String', value);
+      set(hTarget, 'Value', length(value));
     end
     
     %----- Remove the currently selected item from a list
@@ -1574,8 +1672,8 @@ classdef AnimalDatabase < handle
 %                                          , 'TooltipString', '<html><div style="font-size:14px">Selection screen to check in/out cages</div></html>'                 ...
 %                                          , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );
 
-       obj.btn.addUser          = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'AddUser'                                              ...
-                                         , 'TooltipString', '<html><div style="font-size:14px">Screen to input information about new users</div></html>'                 ...
+       obj.btn.addUser          = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'Add Lab User'                                              ...
+                                         , 'TooltipString', '<html><div style="font-size:14px">Assign a new lab member</div></html>'                 ...
                                          , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );                               
       
       obj.btn.finalize        = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'FINALIZE'                                                  ...
@@ -1722,6 +1820,15 @@ classdef AnimalDatabase < handle
                                         , 'Interruptible'     , 'off'                                           ...
                                         , 'BusyAction'        , 'cancel'                                        ...
                                         );
+                                    
+           %% ALS_correct if researcher doesn't have any animals, this shouldn't be activated                          
+                  animal_count_user = obj.NumAnimalsUsers(strcmp({obj.NumAnimalsUsers.user_id}, responsibility{iRes}(iID).ID));
+                  animal_count = animal_count_user.num_animals;
+                  if animal_count == 0
+                      set(obj.btn.showWhose(end), 'Enable', 'Off');
+                      %set(obj.btn.showWhose(end), 'Callback', {@obj.do_nothing});
+                  end
+                                    
         end
       end
       
@@ -1739,6 +1846,11 @@ classdef AnimalDatabase < handle
         end
       end
       obj.okImDone(alreadyBusy);
+    end
+    
+    function do_nothing(obj, hObject, event, researcherID, showNextAni)
+        %ALS_correct, change obj.showAnimalList callback with this when
+        %researcher has no animals associated        
     end
     
     %----- Recreate the GUI display for the currently loaded list of animals
@@ -2220,7 +2332,8 @@ classdef AnimalDatabase < handle
           % This only happens if there's a major status change, which takes effect also into the future
           [data.status{:}]= deal(data.status{end-1});
           % Assign location to owner by default so that one has to explicitly confirm via check in/out
-          data.whereAmI   = researcherID;
+          % ALS_corrected, not assign whereAmI to researchID
+          %data.whereAmI   = researcherID;
         end
   
         %% Ensure that animals have an assigned cage and a consistent location
@@ -2239,6 +2352,10 @@ classdef AnimalDatabase < handle
           executeCallback(ctrlCage, 'KeyPressFcn');
           beep;
           return;
+        end
+        if data.status{end} < HandlingStatus.Dead
+          %% ALS_corrected if animal is not dead assign them to vivarium
+          data.whereAmI   = AnimalDatabase.ANI_HOME;
         end
       end
       
@@ -3528,8 +3645,8 @@ classdef AnimalDatabase < handle
      %                                   , 'TooltipString', '<html><div style="font-size:14px">Selection screen to check in/out cages</div></html>'                 ...
      %                                   , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );
                                      
-     obj.btn.addUser          = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'AddUser'                                              ...
-                                         , 'TooltipString', '<html><div style="font-size:14px">Screen to input information about new users</div></html>'                 ...
+     obj.btn.addUser          = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'Add Lab Users'                                              ...
+                                         , 'TooltipString', '<html><div style="font-size:14px">Assign a new lab member</div></html>'                 ...
                                          , 'FontSize', AnimalDatabase.GUI_FONT, 'Enable', 'off', 'Interruptible', 'off', 'BusyAction', 'cancel' );                               
       
       obj.btn.finalize        = uicontrol( 'Parent', obj.cnt.controls, 'Style', 'pushbutton', 'String', 'FINALIZE'                                                  ...
@@ -4750,55 +4867,65 @@ classdef AnimalDatabase < handle
         obj.DutyRoster(days_idx).Technician = latest_roaster.([obj.DAYS_OF_WEEK_FULL{days_idx}, '_duty']);
     end
     overview_dj.DutyRoster = obj.DutyRoster;
-    
+        
     %Then the Technicians
-    query = lab.User() & 'primary_tech != "N/A"';
-    [full_name, user_id, presence, day_cutoff_time, phone, carrier, email, slack, contact_via, slack_webhook, primary_tech] = ...
-        query.fetchn('full_name', 'user_id', 'presence', 'day_cutoff_time', ...
-                     'phone', 'mobile_carrier', 'email', 'slack', 'contact_via', 'slack_webhook', 'primary_tech');
-    obj.Technicians =  struct('Name', full_name,        ...
-                            'ID', user_id,         ...
-                      'Presence', presence,         ...
-                 'DayCutoffTime', day_cutoff_time,  ...
-                         'Phone', phone,            ...
-                       'Carrier', carrier,          ...
-                         'Email', email,            ...
-                         'Slack', slack,            ...
-                    'ContactVia', contact_via,      ...
-                  'slackWebhook', slack_webhook,    ...
-                   'primaryTech', primary_tech);
-     overview_dj.Technicians =  obj.Technicians';
-     
-     %Then the Researchers
-     query = lab.User() & 'primary_tech = "N/A"';
-     [full_name, user_id, presence, day_cutoff_time, ...
-         phone, carrier, email, slack, contact_via, ...
-         tech_responsibility, slack_webhook] = ...
-            query.fetchn('full_name', 'user_id', 'presence', 'day_cutoff_time', ...
-                         'phone', 'mobile_carrier', 'email', 'slack', 'contact_via', ...
-                         'tech_responsibility', 'slack_webhook');
-     obj.Researchers =  struct('Name', full_name,               ...
-                            'ID', user_id,                      ...
-                      'Presence', presence,                     ...
-                 'DayCutoffTime', day_cutoff_time,              ...
-                         'Phone', phone,                        ...
-                       'Carrier', carrier,                      ...
-                         'Email', email,                        ...
-                         'Slack', slack,                        ...
-                    'ContactVia', contact_via,                  ...
-            'TechResponsibility', tech_responsibility,          ...
-                      'Protocol', fetchn(lab.UserProtocol & query, 'protocol'), ...
-                  'slackWebhook', slack_webhook);
+     query = lab.User() & 'primary_tech != "N/A"';
+     [full_name, user_id, presence, day_cutoff_time, phone, carrier, email, slack, contact_via, slack_webhook, primary_tech] = ...
+         query.fetchn('full_name', 'user_id', 'presence', 'day_cutoff_time', ...
+                      'phone', 'mobile_carrier', 'email', 'slack', 'contact_via', 'slack_webhook', 'primary_tech');
+     obj.Technicians =  struct('Name', full_name,        ...
+                             'ID', user_id,         ...
+                       'Presence', presence,         ...
+                  'DayCutoffTime', day_cutoff_time,  ...
+                          'Phone', phone,            ...
+                        'Carrier', carrier,          ...
+                          'Email', email,            ...
+                          'Slack', slack,            ...
+                     'ContactVia', contact_via,      ...
+                   'slackWebhook', slack_webhook,    ...
+                    'primaryTech', primary_tech);
+      overview_dj.Technicians =  obj.Technicians';
       
-      [user_ids, PIs, secondary_contacts] = fetchn(...
-          query * lab.UserLab * lab.Lab * lab.UserSecondaryContact, ...
-          'user_id', 'pi_name', 'secondary_contact');
-      
-      for l_idx = 1:length(user_ids)
-        obj.Researchers(l_idx).PI = PIs(l_idx);
-        obj.Researchers(l_idx).SecondaryContact = secondary_contacts(l_idx);
-      end
-      overview_dj.Researchers = obj.Researchers';
+    %% ALS_correct use getResearcherDJ to get researchers info
+    struct_query = struct('primary_tech', 'N/A');
+    query_type = '&';
+    obj.Researchers = AnimalDatabase.getAllResearcherDJ(struct_query, query_type);
+    overview_dj.Researchers = obj.Researchers';
+    
+    %% ALS_correct, get num animals for each lab user
+    obj.NumAnimalsUsers = AnimalDatabase.getNumAnimalsUsers();
+%      
+%      %Then the Researchers
+%      query = lab.User() & 'primary_tech = "N/A"';
+%      [full_name, user_id, presence, day_cutoff_time, ...
+%          phone, carrier, email, slack, contact_via, ...
+%          tech_responsibility, slack_webhook] = ...
+%             query.fetchn('full_name', 'user_id', 'presence', 'day_cutoff_time', ...
+%                          'phone', 'mobile_carrier', 'email', 'slack', 'contact_via', ...
+%                          'tech_responsibility', 'slack_webhook');
+%      obj.Researchers =  struct('Name', full_name,               ...
+%                             'ID', user_id,                      ...
+%                       'Presence', presence,                     ...
+%                  'DayCutoffTime', day_cutoff_time,              ...
+%                          'Phone', phone,                        ...
+%                        'Carrier', carrier,                      ...
+%                          'Email', email,                        ...
+%                          'Slack', slack,                        ...
+%                     'ContactVia', contact_via,                  ...
+%             'TechResponsibility', tech_responsibility,          ...
+%                       'Protocol', fetchn(lab.UserProtocol & query, 'protocol'), ...
+%                   'slackWebhook', slack_webhook);
+%       
+%       [user_ids, PIs, secondary_contacts] = fetchn(...
+%           query * lab.UserLab * lab.Lab * lab.UserSecondaryContact, ...
+%           'user_id', 'pi_name', 'secondary_contact');
+%       
+%       for l_idx = 1:length(user_ids)
+%         obj.Researchers(l_idx).PI = PIs(l_idx);
+%         obj.Researchers(l_idx).SecondaryContact = secondary_contacts(l_idx);
+%       end
+%       overview_dj.Researchers = obj.Researchers';
+%     
       
       % Then the NotificationSettings; take only the most up-to-date entry
       all_dates = fetchn(lab.NotificationSettings, 'notification_settings_date');
@@ -4826,7 +4953,9 @@ classdef AnimalDatabase < handle
         singleton         = true;
       end
 
-      template            = obj.getTemplateDJ('Animal');
+      %ALS_correct template already saved
+      template            = obj.tmplAnimal;
+      %template            = obj.getTemplateDJ('Animal');
       
       %% Loop through researchers and their data sheets
       animals             = cell(size(researcherID));
@@ -4855,8 +4984,9 @@ classdef AnimalDatabase < handle
         singleton         = true;
         animalID          = {animalID};
       end
-      template = obj.getTemplateDJ('DailyInfo');
-
+      %% ALS_correct, template already saved in TmplDailyInfo
+      %template = obj.getTemplateDJ('DailyInfo');
+      template = obj.tmplDailyInfo;
 
       %% Sanity check with DataJoint DB instead %%
       
@@ -4875,20 +5005,29 @@ classdef AnimalDatabase < handle
       
       
       %% Get all relevant data from the database
+      %% ALS_correct only retrieve records for corresponding animals
       
-      water_status = fetch(action.WaterAdministration * subject.Subject & struct('user_id', researcherID), ...
+      if ~isempty(animalID)
+          researcher_cell = repmat({researcherID},size(animalID));
+          struct_query = struct('user_id', researcher_cell, ...
+                                'subject_fullname', animalID);
+      else
+          struct_query = struct('user_id', researcherID);
+      end
+      
+      water_status = fetch(action.WaterAdministration * subject.Subject & struct_query, ...
             'subject_fullname', 'administration_date', 'earned', 'supplement', 'received');
-      weight_status = fetch(action.Weighing * proj(subject.Subject, 'user_id') & struct('user_id', researcherID), ...
+      weight_status = fetch(action.Weighing * proj(subject.Subject, 'user_id') & struct_query, ...
             'weight', 'weigh_person','weighing_time','location');      
-      health_status = fetch(subject.HealthStatus * subject.Subject & struct('user_id', researcherID), ...
+      health_status = fetch(subject.HealthStatus * subject.Subject & struct_query, ...
             'normal_behavior', 'bcs','activity','posture_grooming','eat_drink', 'turgor', 'comments'); 
-      action_status = fetch(action.Notification * subject.Subject & struct('user_id', researcherID), ...
+      action_status = fetch(action.Notification * subject.Subject & struct_query, ...
             'cage_notice','health_notice', 'weight_notice');
-      actionitem_status = fetch(action.ActionRecord * subject.Subject & struct('user_id', researcherID), ...
+      actionitem_status = fetch(action.ActionRecord * subject.Subject & struct_query, ...
             'action_id', 'action');
-      session_status = fetch(acquisition.Session * subject.Subject & struct('user_id', researcherID), ...
+      session_status = fetch(acquisition.Session * subject.Subject & struct_query, ...
             'session_start_time', 'session_end_time', 'session_location', 'session_performance', 'level', 'session_protocol', 'session_code_version', 'stimulus_bank');
-      sessiondetails_status = fetch(behavior.TowersSession * subject.Subject & struct('user_id', researcherID), ...
+      sessiondetails_status = fetch(behavior.TowersSession * subject.Subject & struct_query, ...
             'rewarded_side', 'chosen_side', 'maze_id', 'num_towers_r', 'num_towers_l', 'stimulus_set', 'ball_squal'); 
 
       %% Reorganize the data to the AnimalDatabaseFormat
@@ -5344,65 +5483,65 @@ classdef AnimalDatabase < handle
         % insert subject actItem
         % act items are either automatic [weight] or manual requests.
         % Depending on that, they are inserted into different tables
-        if ~isempty(animal.actItems)    %if action item exists
-            for i = 1:length(animal.actItems)
-                subj_act_item = key_subj;
-                
-                action_string = animal.actItems{i};
-                known_actitems = fetch(subject.ActItem);
-                if sum( strcmpi({known_actitems.act_item}, action_string) ) == 1
-                    % insert into manual table, only if it doesn't exist
-                    % already
-                    subj_act_item.act_item = action_string;
-                    if isempty(fetch(subject.SubjectActionManual & subj_act_item))
-                        subj_act_item.notification_date = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
-                        insert(subject.SubjectActionManual, subj_act_item);
-                    end
-                else
-                    % insert into automatic table
-                    % also needed: notification date
-                    subj_act_item.notification_message = action_string;
-                    a = strsplit(subj_act_item.notification_message, ' on ');
-                    notedate = datevec(a{2});
-                    notedate_format = sprintf('%d-%02d-%02d %02d:%02d:%02d', notedate(1), notedate(2), notedate(3), notedate(4), notedate(5), notedate(6));
-                    subj_act_item.notification_date = notedate_format;
-                    if isempty(fetch(subject.SubjectActionAutomatic & subj_act_item))
-                        insert(subject.SubjectActionAutomatic, subj_act_item);
-                    end
-                end
-            end
-        else % if the act_item matlab struct is empty,
-             % but there exists a valid entry. 
-             d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
-             
-             test = subject.SubjectActionAutomatic & key_subj & 'valid_until_date IS NULL';
-             if ~isempty(fetch(test))
-                test_data = fetch(test);
-                if length(test_data) > 1
-                    for idx = 1:length(test_data)
-                        entry = subject.SubjectActionAutomatic & test_data(idx);
-                        update(entry, 'valid_until_date', d);
-                    end
-                else
-                    update(test, 'valid_until_date', d);
-                end
-             end
-             
-             test = subject.SubjectActionManual & key_subj & 'valid_until_date IS NULL';
-             if ~isempty(fetch(test))
-                test_data = fetch(test);
-                if length(test_data) > 1
-                    for idx = 1:length(test_data)
-                        entry = subject.SubjectActionManual & test_data(idx);
-                        update(entry, 'valid_until_date', d);
-                    end
-                else
-                    update(test, 'valid_until_date', d);
-                end
-             end
-        end
         
-            
+        %cell with valid manual activities
+        known_manual_actitems = fetch(subject.ActItem);
+        known_manual_actitems = {known_manual_actitems.act_item};
+        
+        % ALS_correct insert and update new actions manual
+        act_manual_animal = fetch(subject.SubjectActionManual & key_subj & ...
+            'valid_until_date IS NULL');
+        obj.updateActivityDate(subject.SubjectActionManual, ...
+            act_manual_animal, animal.actItems);
+        obj.insertManualActivity(act_manual_animal, ...
+            animal.actItems, known_manual_actitems, key_subj);
+        
+        % ALS_correct update new actions automatic
+        act_auto_animal = fetch(subject.SubjectActionAutomatic & key_subj & ...
+            'valid_until_date IS NULL', '*');
+        act_auto_animal = rmfield(act_auto_animal,'valid_until_date');
+        obj.updateActivityDate(subject.SubjectActionAutomatic, ...
+            act_auto_animal, animal.actItems);        
+         
+%         if ~isempty(animal.actItems)    %if action item exists
+%             for i = 1:length(animal.actItems)
+%                 subj_act_item = key_subj;
+%                 action_string = animal.actItems{i};
+%                 
+%                 if sum( strcmpi({known_actitems.act_item}, action_string) ) == 1
+%                     
+%                 else
+%                     % insert into automatic table
+%                     % also needed: notification date
+%                     subj_act_item.notification_message = action_string;
+%                     a = strsplit(subj_act_item.notification_message, ' on ');
+%                     notedate = datevec(a{2});
+%                     notedate_format = sprintf('%d-%02d-%02d %02d:%02d:%02d', notedate(1), notedate(2), notedate(3), notedate(4), notedate(5), notedate(6));
+%                     subj_act_item.notification_date = notedate_format;
+%                     if isempty(fetch(subject.SubjectActionAutomatic & subj_act_item))
+%                         insert(subject.SubjectActionAutomatic, subj_act_item);
+%                     end
+%                 end
+%             end
+%         else % if the act_item matlab struct is empty,
+%              % but there exists a valid entry. 
+%              d = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
+%              
+%              test = subject.SubjectActionAutomatic & key_subj & 'valid_until_date IS NULL';
+%              if ~isempty(fetch(test))
+%                 test_data = fetch(test);
+%                 if length(test_data) > 1
+%                     for idx = 1:length(test_data)
+%                         entry = subject.SubjectActionAutomatic & test_data(idx);
+%                         update(entry, 'valid_until_date', d);
+%                     end
+%                 else
+%                     update(test, 'valid_until_date', d);
+%                 end
+%              end
+% 
+%         end
+        
     end
     
     %----- Write logging information for *today* for a single animal; specify as pairs e.g. 'received', 1.2, 'weight', 21.4, ...
@@ -5847,25 +5986,28 @@ classdef AnimalDatabase < handle
       %% Show summary for all displayed researchers
       for iID = 1:numel(animals)
         %% Count the number of weighed / active animals
-        [doCare,~,animal]     = obj.shouldICare(animals{iID}, get(obj.btn.responsible,'UserData'), false, true);
-        active                = animal(doCare);
-        emergency             = animal( [animal.status] == HandlingStatus.Missing | [animal.status] == HandlingStatus.Unknown );
-        nWeighed              = sum(AnimalDatabase.takenCaredOf(active, thisDate));
-        
-        %% Show colored text according to whether all animals have been weighed
-        if nWeighed == numel(active) && isempty(emergency)
-          color               = AnimalDatabase.CLR_ALLSWELL;
-        else
-          color               = AnimalDatabase.CLR_ALERT;
-        end
-        
-        info                  = sprintf('%d / %d', nWeighed, numel(active));
-        if ~isempty(emergency)
-          info                = sprintf('%s (%d!)', info, numel(emergency));
-        end
-        info                  = sprintf('<div style="color:rgb(%d,%d,%d)">%s</div>', color(1)*255, color(2)*255, color(3)*255, info);
-        info                  = sprintf('%s<br/>%s', researcherID{iID}, info);
-        set(obj.btn.showWhose(iID), 'String', ['<html><div style="text-align:center">' info '</div></html>']);
+        %% ALS_correct, some researchers doesn't have animals
+          if ~isempty(animals{iID})
+            [doCare,~,animal]     = obj.shouldICare(animals{iID}, get(obj.btn.responsible,'UserData'), false, true);
+            active                = animal(doCare);
+            emergency             = animal( [animal.status] == HandlingStatus.Missing | [animal.status] == HandlingStatus.Unknown );
+            nWeighed              = sum(AnimalDatabase.takenCaredOf(active, thisDate));
+
+            %% Show colored text according to whether all animals have been weighed
+            if nWeighed == numel(active) && isempty(emergency)
+              color               = AnimalDatabase.CLR_ALLSWELL;
+            else
+              color               = AnimalDatabase.CLR_ALERT;
+            end
+
+            info                  = sprintf('%d / %d', nWeighed, numel(active));
+            if ~isempty(emergency)
+              info                = sprintf('%s (%d!)', info, numel(emergency));
+            end
+            info                  = sprintf('<div style="color:rgb(%d,%d,%d)">%s</div>', color(1)*255, color(2)*255, color(3)*255, info);
+            info                  = sprintf('%s<br/>%s', researcherID{iID}, info);
+            set(obj.btn.showWhose(iID), 'String', ['<html><div style="text-align:center">' info '</div></html>']);
+          end
       end
       
       
@@ -6030,7 +6172,9 @@ classdef AnimalDatabase < handle
         
         %% Make sure that we're displaying an up-to-date animal list
         if get(btnOwner(iID), 'Value') ~= 1
-          executeCallback(btnOwner(iID), [], [], false);
+            if ~strcmp(get(btnOwner(iID), 'Enable'),'Off')
+                executeCallback(btnOwner(iID), [], [], false);
+            end
         end
 
         while true
@@ -6041,7 +6185,9 @@ classdef AnimalDatabase < handle
             break;
           end
           % Somehow we're out of sync so refresh everything
-          executeCallback(btnOwner, [], [], false);
+          if ~strcmp(get(btnOwner, 'Enable'),'Off')
+            executeCallback(btnOwner, [], [], false);
+          end
           [doCare,~,animals]  = obj.shouldICare(obj.pullAnimalList(researcherID{iID}), personID);
         end
         
@@ -6102,6 +6248,62 @@ classdef AnimalDatabase < handle
     
     end
     
+    
+    function updateActivityDate(~, table_ref, act_animal, items_selected_now)
+        %Function to update actions  (valid until date field to "now")
+        %
+        % Inputs
+        %table_ref          = datajoint table (subjectActionManual or subjectActionAutomatic)
+        %act_animal         = structure with activities in the database
+        %items_selected_now = cell with activities selected by user
+        
+        %Find activities that are "erased" (has to update valid_until_date field)
+        if isfield(act_animal, 'act_item') % for manual actions
+            idx_act_update = find(~ismember({act_animal.act_item}, items_selected_now));
+        else % for automatic actions
+            idx_act_update = find(~ismember({act_animal.notification_message}, items_selected_now));
+        end
+        date_update = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
+        for i = idx_act_update
+            this_act = act_animal(i);
+            entry = table_ref & this_act;
+            update(entry, 'valid_until_date', date_update);                      
+        end 
+        
+    end
+
+    function insertManualActivity(~, act_animal, actions_selected_now, known_manual_actitems, key_subj)
+        %Function to insert manual actions when needed
+        %
+        % Inputs
+        %act_animal            = structure with activities in the database
+        %actions_selected_now  = cell with actions selected by user
+        %known_manual_actitems = cell with manual valid manual actions to insert
+        %key_subj              = struct wih subject id (struct('subject_fullname', animal.ID))
+        
+        
+        %Check which actions have to be inserted actions not in database
+        idx_act_insert = find(~ismember(actions_selected_now,{act_animal.act_item}));
+        
+        %Check for valid manual actions to insert in table
+        valid_actions = find(ismember(actions_selected_now, known_manual_actitems));
+        
+        %Actions to insert are the intersection of valid and selected actions
+        idx_act_insert = intersect(idx_act_insert, valid_actions);
+        act_insert = actions_selected_now(idx_act_insert);
+        
+        
+        if ~isempty(act_insert)
+            %Create structure with all actions to insert (jut one insertion for multiple actions)
+            struct_act = repmat(key_subj,length(act_insert),1);
+            [struct_act.notification_date] = deal(datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS'));
+            [struct_act(:).('act_item')] = act_insert{:};
+            insert(subject.SubjectActionManual, struct_act);
+        end
+    
+    end
+    
   end
   
 end
+

@@ -53,14 +53,16 @@ switch notificationMethod
   case 'slack'
     
     for iUser = 1:numel(userInfo)
-      SendSlackNotification(userInfo{iUser}.slackWebhook, message{iUser});
+      %ALS_correct SlackNotification Not working
+      %SendSlackNotification(userInfo{iUser}.slackWebhook, message{iUser});
     end
     
   case {'all','emergency'}
     
     for iUser = 1:numel(userInfo)
       send_email({userInfo{iUser}.Email}, msgtitle{iUser}, message{iUser});
-      SendSlackNotification(userInfo{iUser}.slackWebhook, message{iUser});
+      %ALS_correct SlackNotification Not working
+      %SendSlackNotification(userInfo{iUser}.slackWebhook, message{iUser});
       send_msg({userInfo{iUser}.Phone}, [], message{iUser}, {userInfo{iUser}.Carrier});
     end
     
@@ -79,7 +81,8 @@ switch notificationMethod
       for iMethod = 1:numel(methods);
         switch methods{iMethod}
           case 'slack'
-            SendSlackNotification(userInfo{iUser}.slackWebhook, message{iUser});
+            %ALS_correct SlackNotification Not working  
+            %SendSlackNotification(userInfo{iUser}.slackWebhook, message{iUser});
             
           case 'text'
             send_msg({userInfo{iUser}.Phone}, [], message{iUser}, {userInfo{iUser}.Carrier});
