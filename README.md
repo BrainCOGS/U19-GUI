@@ -65,9 +65,9 @@ I also added a set of helper function that make the use of dj simpler:
 # Work to do
 This is sorted by importance:
 1. Do health checks, i.e. play with *db.gui('testuser')*. In the GUI, I checked adding mouse, dead mouse, add action items, body weight, lines... This seemed fine. Try adding and removing animals from/to the graveyard. Make sure notification systems works etc. **(DOING)**
-1. Add additional feature (per LAR request): If animal reaches endpoint via 1910 protocol. Automatically and immediately send emails to people specified in a list (new dj table).
+1. Add additional feature (per LAR request): If animal reaches endpoint via 1910 protocol. Automatically and immediately send emails to people specified in a list (new dj table). **(DONE)**
 1. In the GUI, either remove the delete mouse button, or update the notification with a message that it "only works if you have the required user rights". **(DONE)**
 1. In the GUI, remove the check in/out button. Nobody is using it. **(DONE)**
-1. Write either a new GUI to add a new user, or alternatively add a "new user" button and form to existing GUI, so that new users don't have to be entered with SequelPro. **(DOING)**
+1. Write either a new GUI to add a new user, or alternatively add a "new user" button and form to existing GUI, so that new users don't have to be entered with SequelPro. **(DONE)**
 1. Clean up code. This repo started as a branch of *tankmousevr*. The only relevant stuff for the GUI should be in */database/*. *AnimalDatabase.m* should be ok, but we should go through the other code as well. I have also tried to remove all google-stuff, but there might be dead wood left. Can this be cleaned effectively?
 
