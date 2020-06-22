@@ -455,8 +455,12 @@ classdef AnimalDatabase < handle
                        'status', 'techDuties', 'effective', 'actItems', 'rightNow', ...
                        'imageFile', 'owner'};
                    
-        if length(animals_dj)>0
+        if ~isempty(animals_dj)
             animals_dj = orderfields(animals_dj, field_order);
+        else
+            c = cell(length(field_order),1);
+            animals_dj = cell2struct(c,field_order);
+            animals_dj = animals_dj([]);
         end
     end
     
@@ -1867,12 +1871,10 @@ classdef AnimalDatabase < handle
       %% Fetch animal list from database
       isOwner                 = strcmpi(researcherID, get(obj.btn.responsible, 'UserData'));
       animal                  = obj.whatIsThePlan(obj.pullAnimalList(researcherID), isOwner);
-      decommissioned          = [animal.status] >= HandlingStatus.AdLibWater;
-      remaining               = animal(decommissioned);
-      animal                  = animal(~decommissioned);
-      [grpName,grpIndex]      = AnimalDatabase.getCages(animal);
+      %% ALS_correct if researcher doesn't have any animals, this shouldn't be activated                          
+      animal_count_user = obj.NumAnimalsUsers(strcmp({obj.NumAnimalsUsers.user_id}, researcherID));
+      animal_count = animal_count_user.num_animals;
       
-      %% Create an animal group per cage
       delete(get(obj.cnt.aniGroups, 'Children'));
       
       set(obj.cnt.aniGroups, 'UserData', researcherID);
@@ -1883,24 +1885,33 @@ classdef AnimalDatabase < handle
       obj.btn.aniInfo         = gobjects(0);
       obj.btn.aniAdd          = gobjects(0);
       
-      for iGrp = 1:numel(grpName)
-        %% Add a panel grouping animals by cage
-        grpAni                = animal(grpIndex == iGrp);
-        [cntGroup, btnAdd]    = obj.addAnimalGroup([], [], grpName{iGrp});
-        for iAni = 1:numel(grpAni)
-          obj.addAnimal(btnAdd, [], cntGroup, grpAni(iAni).ID, grpAni(iAni).status, grpAni(iAni).imageFile);
-        end
-      end
-      
-      %% Add remaining animals as a decommissioned group
-      if ~isempty(remaining)
-        obj.addDecommGroup(remaining);
-      end
-      
-      %% Restore non-busy cursor
-      obj.checkUpdateTimer([], [], true);
-      if showNextAni
-        obj.nextInLine(hObject, event, researcherID);
+      if animal_count ~= 0
+          decommissioned          = [animal.status] >= HandlingStatus.AdLibWater;
+          remaining               = animal(decommissioned);
+          animal                  = animal(~decommissioned);
+          [grpName,grpIndex]      = AnimalDatabase.getCages(animal);
+          
+          %% Create an animal group per cage
+          
+          for iGrp = 1:numel(grpName)
+              %% Add a panel grouping animals by cage
+              grpAni                = animal(grpIndex == iGrp);
+              [cntGroup, btnAdd]    = obj.addAnimalGroup([], [], grpName{iGrp});
+              for iAni = 1:numel(grpAni)
+                  obj.addAnimal(btnAdd, [], cntGroup, grpAni(iAni).ID, grpAni(iAni).status, grpAni(iAni).imageFile);
+              end
+          end
+          
+          %% Add remaining animals as a decommissioned group
+          if ~isempty(remaining)
+              obj.addDecommGroup(remaining);
+          end
+          
+          %% Restore non-busy cursor
+          obj.checkUpdateTimer([], [], true);
+          if showNextAni
+              obj.nextInLine(hObject, event, researcherID);
+          end
       end
       obj.okImDone(alreadyBusy);
     end
