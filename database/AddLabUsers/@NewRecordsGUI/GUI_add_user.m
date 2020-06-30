@@ -40,6 +40,10 @@ end
 if ~status
     %Show error message for each mistaken input
     msgbox(error_msg, 'Error','error');
+    % Enable buttons again
+    for i=1:length(obj.button)
+        set(obj.button, 'Enable', 'on');
+    end
     
 % If there is no error in input
 else

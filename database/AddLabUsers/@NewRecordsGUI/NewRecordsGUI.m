@@ -7,14 +7,14 @@ classdef NewRecordsGUI < handle
     %
     % NewRecordsGUI main Properties:
     %    DatabaseTable   - Reference to the tables to add records
-    %    GUI_inputs_info - Information of each input of the GUI 
+    %    GUI_inputs_info - Information of each input of the GUI
     %    figGUI          - main figure of the GUI
     %    panel           - main panel of the GUI
     %    vbox            - box to separate in three the GUI
     %    (title/input grid/button box)
     %    title           - title part of the GUI
     %    grid            - Grid input part of the GUI
-    %    GUI_inputs      - Individual inputs for the GUI 
+    %    GUI_inputs      - Individual inputs for the GUI
     %    hbox            - Box in the lower part to insert the buttons
     %    button          - Buttons for actions of the GUI
     %
@@ -64,6 +64,7 @@ classdef NewRecordsGUI < handle
         % Buttons Properties
         BUTTON_SIZE           = [50 50]
         BUTTON_IMAGE          = fullfile(NewRecordsGUI.DIR_IMAGE, 'add_button_image.png')
+        
         
     end
     
@@ -127,6 +128,5 @@ classdef NewRecordsGUI < handle
         end
         
     end
-    
     
 end

@@ -23,6 +23,7 @@ classdef GUI_Input_Edit < GUI_Input
         name
         uicontrolable
         datatype
+        forced_input
     end
     
     methods
@@ -104,6 +105,12 @@ classdef GUI_Input_Edit < GUI_Input
                 error_msg = ': Input is not string';
             end
             
+            %Check if input is empty and raise error if required
+            if isempty(input) && (obj.forced_input)
+                status = false;
+                error_msg = ': Input cannot be leaved empty';
+            end
+            
             %If value is incorrect append field name 
             % and correspondent error message
             if ~status
@@ -112,22 +119,26 @@ classdef GUI_Input_Edit < GUI_Input
             
         end
         
-        function obj = GUI_Input_Edit(parent, name, default, datatype)
+        function obj = GUI_Input_Edit(parent, field_info)
             % Class constructor, define initial object properties
             %
             % Inputs:
             % parent   = parent uiobject for the GUI_input_Edit object
-            % name     = name of the input field (for database)
-            % default  = default value for input
-            % datatype = intended datatype for input
+            % field_info     = structure with data from field
+            %          name           = name of the input field (for database)
+            %          datatype       = intended datatype for input
+            %          default        = default value for input
+            %          forced_input   = true/false, to indicate if field
+            %                           can be leaved empty
             %
             % Outputs:
             % obj = input object
             
-            obj.name = name;
-            obj.datatype = datatype;
+            obj.name = field_info.name;
+            obj.datatype = field_info.datatype;
+            obj.forced_input = field_info.forced_input;
             obj.uicontrolable = obj.set_uicontrol(parent);
-            obj.set_default(default)
+            obj.set_default(field_info.default)
             
          
         end

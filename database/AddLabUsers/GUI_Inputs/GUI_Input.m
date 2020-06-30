@@ -30,6 +30,7 @@ classdef (Abstract) GUI_Input
         name
         uicontrolable
         datatype
+        forced_input
         
     end
     

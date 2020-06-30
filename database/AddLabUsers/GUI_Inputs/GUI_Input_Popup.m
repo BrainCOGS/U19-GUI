@@ -22,6 +22,7 @@ classdef GUI_Input_Popup < GUI_Input
         name
         uicontrolable
         datatype
+        forced_input
         value_list
     end
     
@@ -114,6 +115,12 @@ classdef GUI_Input_Popup < GUI_Input
                 error_msg = ': Input is not in accepted values';
             end
             
+            %Check if input is empty and raise error if required
+            if isempty(input) && (obj.forced_input)
+                status = false;
+                error_msg = ': Input cannot be leaved empty';
+            end
+            
             %If value is incorrect append field name 
             % and correspondent error message
             if ~status
@@ -122,24 +129,27 @@ classdef GUI_Input_Popup < GUI_Input
             
         end
         
-        function obj = GUI_Input_Popup(parent, name, list_values, default, datatype)
+        function obj = GUI_Input_Popup(parent, field_info)
             % Class constructor, define initial object properties
             %
             % Inputs:
             % parent      = parent uiobject for the GUI_input_Popup object
-            % name        = name of the input field (for database)
-            % list_values = value of accepted values for input
-            % default     = default value for input
-            % datatype    = intended datatype for input
+            % field_info  = structure with data from field
+            %          name           = name of the input field (for database)
+            %          datatype       = intended datatype for input
+            %          default        = default value for input
+            %          forced_input   = true/false, to indicate if field
+            %                           can be leaved empty
+            %          list_values    = list of accepted values for input
             %
             % Outputs:
             % obj = input object
             
-            obj.name = name;
-            obj.datatype = datatype;
+            obj.name = field_info.name;
+            obj.datatype = field_info.datatype;
             obj.uicontrolable = obj.set_uicontrol(parent);
-            obj.value_list = obj.set_value_list(list_values);
-            obj.set_default(default);
+            obj.value_list = obj.set_value_list(field_info.list_values);
+            obj.set_default(field_info.default);
             
         end
     end

@@ -29,7 +29,8 @@ classdef GUI_Input_HBox < GUI_Input
         uicontrolable
         uiedits
         datatype
-        size
+        forced_input
+        sizeinput
     end
     
     methods
@@ -69,8 +70,8 @@ classdef GUI_Input_HBox < GUI_Input
                 'Spacing', obj.GUI_INPUT_SPACING, ......
                 'BackgroundColor', obj.GUI_INPUT_BKG_CLR);
             
-            uiedits = cell(obj.size, 1);
-            for i = 1:obj.size
+            uiedits = cell(obj.sizeinput, 1);
+            for i = 1:obj.sizeinput
                 
                 uiedits{i} = obj.create_edit(uicontrolable);
                 
@@ -89,8 +90,8 @@ classdef GUI_Input_HBox < GUI_Input
             % values = values written by user (transformed if needed by GUI)
             
             %Create cell for writting all edit values
-            values = cell(1,obj.size);
-            for i=1:obj.size
+            values = cell(1,obj.sizeinput);
+            for i=1:obj.sizeinput
                 %Read each one of the edits
                 values{i} = get(obj.uiedits{i}, 'String');
                 %Transform if applicable
@@ -123,6 +124,12 @@ classdef GUI_Input_HBox < GUI_Input
             % status = true if input is correct, false otherwise
             % error  = error message to inform user why input is incorrect
             
+            if length(input) ~= obj.sizeinput
+                status = false;
+                error = strcat([obj.name 'Input is not appropiate size']);
+                return
+            end
+            
             status = true;
             error = '';
             %Check if value is string cell
@@ -135,6 +142,18 @@ classdef GUI_Input_HBox < GUI_Input
                 error_msg = ': Input is not conformed of only numbers';
             end
             
+             %Check if input is empty and raise error if required
+            if strcmp(obj.datatype,'cell string')
+                for i=1:length(input)
+                    ac_input = input{i};
+                    if isempty(ac_input) && (obj.forced_input)
+                        status = false;
+                        error_msg = ': Input cannot be leaved empty';
+                        break;
+                    end
+                end
+            end
+            
             %If value is incorrect append field name
             % and correspondent error message
             if ~status
@@ -143,26 +162,67 @@ classdef GUI_Input_HBox < GUI_Input
             
         end
         
-        function set_default(obj, default)
-            %Not defined
+        function set_value(obj, value)
+            % Set a value to all edits of input
+            %
+            % Inputs:
+            % obj = GUI_input_HBox object
+            % value = value to set
+                      
+            %Transform value to a cell if it is numeric array
+            if ~iscell(value)
+                value = num2cell(value);
+            end
+            
+            for i=1:obj.sizeinput
+                %For each edit set value
+                set(obj.uiedits{i}, 'String', value{i});
+                
+            end
+            
         end
         
-        function obj = GUI_Input_HBox(parent, name, example_value, datatype)
+        function set_default(obj, default)
+            % Write default value for the input
+            %
+            % Inputs:
+            % obj = GUI_input_HBox object
+            % default = default value to write
+            
+            %Check if default is correct type
+            [status, errormsg] = check_input(obj, default);
+            
+            %If not, raise error
+            if ~(status)
+                error(errormsg);
+            %If it is, set proper value    
+            else
+                obj.set_value(default)
+            end
+
+        end
+        
+        function obj = GUI_Input_HBox(parent, field_info)
             % Class constructor, define initial object properties
             %
             % Inputs:
             % parent         = parent object for the GUI_Input_HBox object
-            % name           = name of the input field (for database)
-            % example_value  = example value for this input
-            % datatype       = intended datatype for input
+            % field_info     = structure with data from field
+            %          name           = name of the input field (for database)
+            %          example_value  = example value for this input
+            %          datatype       = intended datatype for input
+            %          default        = default value for input
+            %          forced_input   = true/false, to indicate if field
+            %                           can be leaved empty
             %
             % Outputs:
             % obj = input object
             
-            obj.name = name;
-            obj.datatype = datatype;
-            obj.size = length(example_value);
+            obj.name = field_info.name;
+            obj.datatype = field_info.datatype;
+            obj.sizeinput = length(field_info.example_value);
             [obj.uicontrolable, obj.uiedits] = obj.set_uicontrol(parent);
+            obj.set_default(field_info.default);
             
             
         end
