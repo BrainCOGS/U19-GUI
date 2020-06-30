@@ -8,6 +8,9 @@ function [position] = define_figure_position(~, position)
 
   % Get the screen coordinates to reference the figure position against
   screenSize          = get(0, 'MonitorPosition');
+  if size(screenSize,1) > 1
+      screenSize = screenSize(1,:);
+  end
   
   % Convert position to relative coordinate if necessary
   position(1:2)       = standardCoordinate(position(1:2), screenSize(3:4)) + screenSize(1:2);

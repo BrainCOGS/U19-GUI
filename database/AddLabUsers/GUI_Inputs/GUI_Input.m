@@ -19,7 +19,7 @@ classdef (Abstract) GUI_Input
     
     properties
         
-        GUI_INPUT_FONTSIZE        = conditional(ScreenProperties.IS_SMALL_SCREEN, 9, 14)
+        GUI_INPUT_FONTSIZE        = conditional(ScreenProperties.IS_SMALL_SCREEN, 12, 16)
         GUI_INPUT_BKG_CLR         = [1 1 1];
         GUI_INPUT_FOR_CLR         = [0 0 0];
         

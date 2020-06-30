@@ -4,8 +4,8 @@ classdef ScreenProperties
     
     properties (Constant)
         
-        LARGE_WIDTH    = 1920
-        LARGE_HEIGHT   = 1080
+        LARGE_WIDTH    = 800
+        LARGE_HEIGHT   = 600
         IS_SMALL_SCREEN = ScreenProperties.checkMonitorSize()
     end
         

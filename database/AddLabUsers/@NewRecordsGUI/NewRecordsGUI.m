@@ -35,10 +35,10 @@ classdef NewRecordsGUI < handle
         GUI_IS_SMALLSCREEN    = ScreenProperties.checkMonitorSize()
         GUI_POSITION          = [0 45 -1 -45]
         GUI_POSITION_MODE     = 'OuterPosition'
-        GUI_FONT              = conditional(AnimalDatabase.GUI_IS_SMALLSCREEN, 9, 14)
+        GUI_FONT              = conditional(NewRecordsGUI.GUI_IS_SMALLSCREEN, 11, 14)
         
         % Title part Properties
-        TITLE_FONTSIZE        = 15
+        TITLE_FONTSIZE        = conditional(NewRecordsGUI.GUI_IS_SMALLSCREEN, 15, 18)
         TITLE_MESSAGE         = 'Add new users to the database: '
         TITLE_BKG_CLR         = [1 1 1]*0.97;
         TITLE_CLR             = [0 0 0];
@@ -47,7 +47,7 @@ classdef NewRecordsGUI < handle
         GRID_NUM_COLUMNS       = 2
         
         % Labels Properties
-        LABEL_FONTSIZE        = conditional(ScreenProperties.IS_SMALL_SCREEN, 10, 14)
+        LABEL_FONTSIZE        = conditional(NewRecordsGUI.GUI_IS_SMALLSCREEN, 11, 14)
         LABEL_BKG_CLR         = [1 1 1]*0.97;
         LABEL_TOOL_TIP_START  = '<html><div style="font-size:12px">'
         LABEL_TOOL_TIP_END    = '</div></html>'
