@@ -2377,6 +2377,7 @@ classdef AnimalDatabase < handle
       %% Handle major changes in animal lists or status
       if isNewAni
         obj.somebodyArrived(researcher, animal);
+        obj.minPushDailyInfo(animalID)
         
       elseif isfield(data,'status')
         inEffect          = obj.whatIsThePlan(animal);
@@ -2608,6 +2609,11 @@ classdef AnimalDatabase < handle
         groupName             = validatedInputDialog( 'Add cage', 'New cage name:', [], validator, [], true     ...
                                                     , AnimalDatabase.GUI_FONT, [], AnimalDatabase.GUI_MONITOR   ...
                                                     );
+        %ALS, check that cage name is not too big
+        if length(groupName) > 16
+           msgbox('cage name cannot exceed 16 characters', 'Error','error');
+           return
+        end
         if isempty(groupName)
           return;
         end
@@ -2700,6 +2706,12 @@ classdef AnimalDatabase < handle
         animalID              = validatedInputDialog( 'Add animal', 'New animal ID:', [], validator, [], true   ...
                                                     , AnimalDatabase.GUI_FONT, [], AnimalDatabase.GUI_MONITOR   ...
                                                     );
+
+        if ~startsWith(animalID, [researcherID '_'])
+           msgbox(['All animal names have to start with a valid NetID of a researcher, (' researcherID '_)'], 'Error','error');
+           return
+        end
+
         if isempty(animalID)
           return;
         end
@@ -2769,17 +2781,21 @@ classdef AnimalDatabase < handle
                                           );
       cntGroup                = obj.cnt.groupAni(end);
 
-      %% Sort animals by status
-      info                    = [num2cell(double([animal.status])); {animal.ID}]';
-      [~,iOrder]              = sortrows(info);
-      animal                  = animal(iOrder);
-      
-      %% Add a button per animal
-      for iAni = 1:numel(animal)
-        obj.addDecommAnimal(obj.cnt.groupAni(end), animal(iAni).ID, animal(iAni).status, animal(iAni).imageFile);
+      if length(animal) >= 1
+          %% Sort animals by status
+          info                    = [num2cell(double([animal.status])); {animal.ID}]';
+          [~,iOrder]              = sortrows(info);
+          animal                  = animal(iOrder);
+
+          %% Add a button per animal
+          for iAni = 1:numel(animal)
+              obj.addDecommAnimal(obj.cnt.groupAni(end), animal(iAni).ID, animal(iAni).status, animal(iAni).imageFile);
+          end
+
+
+          AnimalDatabase.layoutButtonGrid(obj.cnt.groupAni(end));
       end
-      
-      AnimalDatabase.layoutButtonGrid(obj.cnt.groupAni(end));
+         
     end
     
     %----- Add a decommissioned animal to a given group
@@ -5412,8 +5428,10 @@ classdef AnimalDatabase < handle
         
         if ~exists
             if ~isfield(subj, 'subject_nickname')
-                a = strsplit(subj.subject_fullname, '_');
-                subj.subject_nickname = a{2};
+                idx_under = strfind(subj.subject_fullname, '_');
+                subj.subject_nickname = subj.subject_fullname(idx_under+1:end);
+                %a = strsplit(subj.subject_fullname, '_');
+                %subj.subject_nickname = a{2};
             end
             if ~isfield(subj, 'user_id')
                 subj.user_id = researcher.ID;
@@ -5555,6 +5573,25 @@ classdef AnimalDatabase < handle
         
     end
     
+    %---- Function to write only water_administration when new animal is
+    %added (to prevent wrong action_record insertion)
+    function minPushDailyInfo(obj, animalID)
+
+      date = datevec(today());
+      log_date = sprintf('%d-%02d-%02d', date(1), date(2), date(3));
+      % insert water administration information
+      water_info_key = struct( ...
+        'subject_fullname', animalID, ...
+        'administration_date', log_date...
+        );
+      water_info = water_info_key;
+      water_info.watertype_name = 'Unknown';
+      water_info.earned = 0;
+
+      insert(action.WaterAdministration, water_info)
+
+    end
+
     %----- Write logging information for *today* for a single animal; specify as pairs e.g. 'received', 1.2, 'weight', 21.4, ...
     function [logs, animal, researcher] = pushDailyInfo(obj, researcherID, animalID, varargin)
       varargin          = AnimalDatabase.checkPairInput(varargin, 'Daily information to set');
