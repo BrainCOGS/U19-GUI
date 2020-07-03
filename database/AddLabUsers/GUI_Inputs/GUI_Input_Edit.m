@@ -23,7 +23,8 @@ classdef GUI_Input_Edit < GUI_Input
         name
         uicontrolable
         datatype
-        forced_input
+        format
+        formaterr
     end
     
     methods
@@ -105,10 +106,10 @@ classdef GUI_Input_Edit < GUI_Input
                 error_msg = ': Input is not string';
             end
             
-            %Check if input is empty and raise error if required
-            if isempty(input) && (obj.forced_input)
+            %Check if input is is in format and raise error if required
+            if ~isempty(obj.format) && isempty(regexp(input, obj.format, 'ONCE'))
                 status = false;
-                error_msg = ': Input cannot be leaved empty';
+                error_msg = [': ' obj.formaterr];
             end
             
             %If value is incorrect append field name 
@@ -128,15 +129,16 @@ classdef GUI_Input_Edit < GUI_Input
             %          name           = name of the input field (for database)
             %          datatype       = intended datatype for input
             %          default        = default value for input
-            %          forced_input   = true/false, to indicate if field
-            %                           can be leaved empty
+            %          format         = regexp format to ensure
+            %          formaterr      = text error when not complying format 
             %
             % Outputs:
             % obj = input object
             
             obj.name = field_info.name;
             obj.datatype = field_info.datatype;
-            obj.forced_input = field_info.forced_input;
+            obj.format = field_info.format;
+            obj.formaterr = field_info.formaterr;
             obj.uicontrolable = obj.set_uicontrol(parent);
             obj.set_default(field_info.default)
             

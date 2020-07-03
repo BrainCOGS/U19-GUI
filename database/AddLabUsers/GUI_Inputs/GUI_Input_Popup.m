@@ -16,13 +16,14 @@ classdef GUI_Input_Popup < GUI_Input
     %   set_default(obj, default)        - write default value ("if applicable")
     %   get_value(obj)                   - read value written by user
     %   check_input(obj, input)          - check if input is correct
-    %   set_value_list(obj, value_list)  - 
+    %   set_value_list(obj, value_list)  -
     
     properties
         name
         uicontrolable
         datatype
-        forced_input
+        format
+        formaterr
         value_list
     end
     
@@ -56,7 +57,7 @@ classdef GUI_Input_Popup < GUI_Input
             % obj = GUI_input_Popup object
             %
             % Outputs:
-            % value = value written by user 
+            % value = value written by user
             
             list = get(obj.uicontrolable, 'String');
             idx = get(obj.uicontrolable, 'Value');
@@ -93,11 +94,11 @@ classdef GUI_Input_Popup < GUI_Input
         end
         
         function [status, error] = check_input(obj, input)
-            % Check fot data compliance (w/datatype defined by object) 
+            % Check fot data compliance (w/datatype defined by object)
             %
             % Inputs:
             % obj = GUI_input_Popup object
-            % input = Value written (and transformed) 
+            % input = Value written (and transformed)
             %
             % Outputs:
             % status = true if input is correct, false otherwise
@@ -109,19 +110,19 @@ classdef GUI_Input_Popup < GUI_Input
             if strcmp(obj.datatype,'numeric')
                 status = any(cellfun(@(x) x==input,obj.value_list));
                 error_msg = ': Input is not in accepted values';
-            %Check if string value is in cell of accepted values
+                %Check if string value is in cell of accepted values
             elseif strcmp(obj.datatype,'string')
                 status = any(find(strcmp(obj.value_list, input),1));
                 error_msg = ': Input is not in accepted values';
             end
             
-            %Check if input is empty and raise error if required
-            if isempty(input) && (obj.forced_input)
+            %Check if input is is in format and raise error if required
+            if ~isempty(obj.format) && isempty(regexp(input, obj.format, 'ONCE'))
                 status = false;
-                error_msg = ': Input cannot be leaved empty';
+                error_msg = [': ' obj.formaterr];
             end
             
-            %If value is incorrect append field name 
+            %If value is incorrect append field name
             % and correspondent error message
             if ~status
                 error = strcat([obj.name error_msg]);
@@ -138,9 +139,9 @@ classdef GUI_Input_Popup < GUI_Input
             %          name           = name of the input field (for database)
             %          datatype       = intended datatype for input
             %          default        = default value for input
-            %          forced_input   = true/false, to indicate if field
-            %                           can be leaved empty
+            %          format         = regexp format to ensure
             %          list_values    = list of accepted values for input
+            %          formaterr      = text error when not complying format             
             %
             % Outputs:
             % obj = input object
@@ -150,6 +151,8 @@ classdef GUI_Input_Popup < GUI_Input
             obj.uicontrolable = obj.set_uicontrol(parent);
             obj.value_list = obj.set_value_list(field_info.list_values);
             obj.set_default(field_info.default);
+            obj.format = field_info.format;
+            obj.formaterr = field_info.formaterr;
             
         end
     end

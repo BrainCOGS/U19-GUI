@@ -29,7 +29,8 @@ classdef GUI_Input_HBox < GUI_Input
         uicontrolable
         uiedits
         datatype
-        forced_input
+        format
+        formaterr
         sizeinput
     end
     
@@ -142,18 +143,18 @@ classdef GUI_Input_HBox < GUI_Input
                 error_msg = ': Input is not conformed of only numbers';
             end
             
-             %Check if input is empty and raise error if required
-            if strcmp(obj.datatype,'cell string')
-                for i=1:length(input)
+             %Check if input is is in format and raise error if required
+            if ~isempty(obj.format) && strcmp(obj.datatype,'cell string')
+                 for i=1:length(input)
                     ac_input = input{i};
-                    if isempty(ac_input) && (obj.forced_input)
+                    if isempty(regexp(ac_input, obj.format{i}, 'ONCE'))
                         status = false;
-                        error_msg = ': Input cannot be leaved empty';
+                        error_msg = [': ' obj.formaterr];
                         break;
                     end
-                end
+                 end
             end
-            
+             
             %If value is incorrect append field name
             % and correspondent error message
             if ~status
@@ -212,8 +213,8 @@ classdef GUI_Input_HBox < GUI_Input
             %          example_value  = example value for this input
             %          datatype       = intended datatype for input
             %          default        = default value for input
-            %          forced_input   = true/false, to indicate if field
-            %                           can be leaved empty
+            %          format         = regexp format to ensure
+            %          formaterr      = text error when not complying format             
             %
             % Outputs:
             % obj = input object
@@ -221,6 +222,8 @@ classdef GUI_Input_HBox < GUI_Input
             obj.name = field_info.name;
             obj.datatype = field_info.datatype;
             obj.sizeinput = length(field_info.example_value);
+            obj.format = field_info.format;
+            obj.formaterr = field_info.formaterr;
             [obj.uicontrolable, obj.uiedits] = obj.set_uicontrol(parent);
             obj.set_default(field_info.default);
             

@@ -15,22 +15,7 @@ classdef DataJointLabUserTable
     %                                       table_info structure
     % get_values_table_field(~, table, field, sort_limit) -Function to get specific fields from table
     properties (Constant)
-        
-        %dj_conn      = getdjconnection('u19_', 'datajoint00.pni.princeton.edu');
-        FORCED_DEFAULT        = struct(...
-            'contact_via',          'email', ...
-            'primary_tech',         'N/A', ...
-            'tech_responsibility',  'yes', ...
-            'day_cutoff_time',      [16 30], ...
-            'slack_webhook',        '', ...
-            'watering_logs',        '' ...
-            );
-        
-        FORCED_INPUT        = {...
-            'user_id', ...
-            'user_nickname'
-            };
-        
+                        
     end
     
     %_________________________________________________________________________________________________
@@ -38,6 +23,7 @@ classdef DataJointLabUserTable
         
         GUI_info
         tables_info
+        table_user_info
         
     end
     
@@ -54,10 +40,6 @@ classdef DataJointLabUserTable
             %----- Class constructor, defining structures
             
             [obj.GUI_info, obj.tables_info] = obj.get_GUI_table_info();
-            forced_defaults = declare_forced_defaults(obj);
-            [obj.GUI_info(:).default] = deal(forced_defaults{:});
-            forced_input  = declare_forced_inputs(obj);
-            [obj.GUI_info(:).forced_input] = deal(forced_input{:});
             
         end
         
