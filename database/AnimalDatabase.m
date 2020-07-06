@@ -5517,20 +5517,25 @@ classdef AnimalDatabase < handle
         known_manual_actitems = fetch(subject.ActItem);
         known_manual_actitems = {known_manual_actitems.act_item};
         
+        animal_auto_act_items = setdiff(animal.actItems, known_manual_actitems);
+        animal_manual_act_items = intersect(animal.actItems, known_manual_actitems);
+        
         % ALS_correct insert and update new actions manual
         act_manual_animal = fetch(subject.SubjectActionManual & key_subj & ...
             'valid_until_date IS NULL');
-        obj.updateActivityDate(subject.SubjectActionManual, ...
-            act_manual_animal, animal.actItems);
-        obj.insertManualActivity(act_manual_animal, ...
-            animal.actItems, known_manual_actitems, key_subj);
+        obj.updateActivity('manual', act_manual_animal, ...
+            animal_manual_act_items);
+        obj.insertActivity('manual', act_manual_animal, ...
+            animal_manual_act_items, key_subj);
         
         % ALS_correct update new actions automatic
         act_auto_animal = fetch(subject.SubjectActionAutomatic & key_subj & ...
             'valid_until_date IS NULL', '*');
         act_auto_animal = rmfield(act_auto_animal,'valid_until_date');
-        obj.updateActivityDate(subject.SubjectActionAutomatic, ...
-            act_auto_animal, animal.actItems);        
+        obj.updateActivity('automatic', act_auto_animal, ...
+            animal_auto_act_items);  
+        obj.insertActivity('automatic', act_auto_animal, ...
+            animal_auto_act_items, key_subj);  
          
 %         if ~isempty(animal.actItems)    %if action item exists
 %             for i = 1:length(animal.actItems)
@@ -6297,56 +6302,60 @@ classdef AnimalDatabase < handle
     end
     
     
-    function updateActivityDate(~, table_ref, act_animal, items_selected_now)
+    function updateActivity(~, type, act_animal, items_selected_now)
         %Function to update actions  (valid until date field to "now")
         %
         % Inputs
-        %table_ref          = datajoint table (subjectActionManual or subjectActionAutomatic)
+        %type                  = manual/automatic, which type of activity to insert
         %act_animal         = structure with activities in the database
         %items_selected_now = cell with activities selected by user
         
-        %Find activities that are "erased" (has to update valid_until_date field)
-        if isfield(act_animal, 'act_item') % for manual actions
-            idx_act_update = find(~ismember({act_animal.act_item}, items_selected_now));
-        else % for automatic actions
-            idx_act_update = find(~ismember({act_animal.notification_message}, items_selected_now));
+        if strcmp(type,'manual')
+            unique_field = 'act_item';
+            table = subject.SubjectActionManual;
+        else
+            unique_field = 'notification_message';
+            table = subject.SubjectActionAutomatic;
         end
+        
+        %Find activities that are "erased" (has to update valid_until_date field)
+        idx_act_update = find(~ismember({act_animal.(unique_field)}, items_selected_now));
+
         date_update = datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS');
         for i = idx_act_update
             this_act = act_animal(i);
-            entry = table_ref & this_act;
+            entry = table & this_act;
             update(entry, 'valid_until_date', date_update);                      
         end 
         
     end
 
-    function insertManualActivity(~, act_animal, actions_selected_now, known_manual_actitems, key_subj)
+    function insertActivity(~, type, act_animal, items_selected_now, key_subj)
         %Function to insert manual actions when needed
         %
         % Inputs
+        %type                  = manual/automatic, which type of activity to insert
         %act_animal            = structure with activities in the database
         %actions_selected_now  = cell with actions selected by user
-        %known_manual_actitems = cell with manual valid manual actions to insert
         %key_subj              = struct wih subject id (struct('subject_fullname', animal.ID))
         
-        
-        %Check which actions have to be inserted actions not in database
-        idx_act_insert = find(~ismember(actions_selected_now,{act_animal.act_item}));
-        
-        %Check for valid manual actions to insert in table
-        valid_actions = find(ismember(actions_selected_now, known_manual_actitems));
-        
-        %Actions to insert are the intersection of valid and selected actions
-        idx_act_insert = intersect(idx_act_insert, valid_actions);
-        act_insert = actions_selected_now(idx_act_insert);
-        
-        
+        if strcmp(type,'manual')
+            unique_field = 'act_item';
+            table = subject.SubjectActionManual;
+        else
+            unique_field = 'notification_message';
+            table = subject.SubjectActionAutomatic;
+        end
+            
+         %Find activities that have to be inserted no in database
+         act_insert = setdiff(items_selected_now, {act_animal.(unique_field)});
+ 
         if ~isempty(act_insert)
             %Create structure with all actions to insert (jut one insertion for multiple actions)
             struct_act = repmat(key_subj,length(act_insert),1);
             [struct_act.notification_date] = deal(datestr( datetime(now(),'ConvertFrom','datenum'), 'yyyy-mm-dd HH:MM:SS'));
-            [struct_act(:).('act_item')] = act_insert{:};
-            insert(subject.SubjectActionManual, struct_act);
+            [struct_act(:).(unique_field)] = act_insert{:};
+            insert(table, struct_act);
         end
     
     end
