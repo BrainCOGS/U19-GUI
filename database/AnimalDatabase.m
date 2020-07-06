@@ -5517,7 +5517,14 @@ classdef AnimalDatabase < handle
         known_manual_actitems = fetch(subject.ActItem);
         known_manual_actitems = {known_manual_actitems.act_item};
         
-        animal_auto_act_items = setdiff(animal.actItems, known_manual_actitems);
+        %Get automatic action items from actitem list
+        if ~isempty(animal.actItems)
+            animal_auto_act_items = setdiff(animal.actItems, known_manual_actitems);
+        else
+            animal_auto_act_items = cell(1,0);
+        end
+        
+        %Get manual action items from actitem list
         animal_manual_act_items = intersect(animal.actItems, known_manual_actitems);
         
         % ALS_correct insert and update new actions manual
