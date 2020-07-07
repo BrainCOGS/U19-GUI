@@ -5487,17 +5487,19 @@ classdef AnimalDatabase < handle
                     end
                 end
                 
+                subj_status.water_per_day = animal.waterPerDay{i};
+                subj_status.schedule = strjoin(animal.techDuties{i}.string, '/');
+                
                 if ismember(subj_status.subject_status, {'Missing', 'Unknown'})
                     if isempty(fetch(action.SubjectStatus & key_subj_status))
                         insert(action.SubjectStatus, subj_status)
                     else
                         update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
-                        update(action.SubjectStatus & key_subj_status, 'water_per_day')
-                        update(action.SubjectStatus & key_subj_status, 'schedule')
+                        update(action.SubjectStatus & key_subj_status, 'water_per_day', subj_status.water_per_day)
+                        update(action.SubjectStatus & key_subj_status, 'schedule', subj_status.schedule)
                     end
                 else
-                    subj_status.water_per_day = animal.waterPerDay{i};
-                    subj_status.schedule = strjoin(animal.techDuties{i}.string, '/');
+
                     if ~isempty(fetch(action.SubjectStatus & key_subj_status))
                         update(action.SubjectStatus & key_subj_status, 'subject_status', subj_status.subject_status)
                         update(action.SubjectStatus & key_subj_status, 'water_per_day', subj_status.water_per_day)
@@ -5806,9 +5808,13 @@ classdef AnimalDatabase < handle
               if isempty(fetch(action.ActionRecord & action_item_key))
                   action_raw = filledLog.actions{iaction};
                   if ~strcmp(action_raw, 'Unknown')
-                      action_string = action_raw;
-                      action_item.action = action_string;
-                      insert(action.ActionRecord, action_item)
+                      %ALS, correction only insert yes or no actions
+                      %prevent to insert this type of action action = {[Unknown] Weight to low ....}
+                      if (startsWith(action_raw,'[Yes]') || startsWith(action_raw,'[No]'))
+                        action_string = action_raw;
+                        action_item.action = action_string;
+                        insert(action.ActionRecord, action_item)
+                      end 
                   end
               end
           end
