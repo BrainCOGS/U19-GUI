@@ -492,6 +492,12 @@ classdef AnimalDatabase < handle
     
     %----- Convert a HHMM format number to hours and minutes in 24-hour format
     function [hour, minute] = num2time(number)
+        
+      if ischar(number)
+            t = datevec(datetime(number));
+            hour = t(4);
+            minute = t(5);
+      else  
       switch numel(number)
         case 1
           hour      = floor(number / 100);
@@ -506,8 +512,8 @@ classdef AnimalDatabase < handle
       if hour < 0 || hour > 23 || minute < 0 || minute > 59 || minute ~= floor(minute)
         error('AnimalDatabase:num2time', 'Invalid TIME data %.4g" with hour = %.3g, minute = %.3g.', number, hour, minute);
       end
+      end
     end
-    
     
       function c = datestr_comparison(s1,s2)
         % Function to compare dates (as strings) when there are in format YYYY-MM-DDHH:MM:SS
@@ -814,7 +820,7 @@ classdef AnimalDatabase < handle
           first = false;
       end
       %ALS, function to get again animals and researchers info, reset logs  
-      tic
+
       obj.getAnimalsDJ({}, false, true);
       if first
         obj.pullOverview(true);    
@@ -822,8 +828,6 @@ classdef AnimalDatabase < handle
         obj.setAnimals2Researchers()
       end
       obj.Logs = cell(size(obj.Animals));
-      toc
-      disp(['REFRESH RESERACHERS ANIMALS']);
       
     end
       
@@ -2027,7 +2031,7 @@ classdef AnimalDatabase < handle
 
     %----- Recreate the GUI display for details of the currently loaded animal
     function showAnimalDetails(obj, hObject, event, researcherID, animalID, animal, isNewAni)
-      tic
+
       if nargin < 6
         animal            = [];
       end
@@ -2263,8 +2267,6 @@ classdef AnimalDatabase < handle
       
       %% Restore non-busy cursor
       obj.okImDone(alreadyBusy);
-      toc
-      disp(['showAnimalDetails 4'])
     end
     
     %----- Recreate the GUI display for the currently loaded daily log
@@ -5130,30 +5132,6 @@ classdef AnimalDatabase < handle
         animals             = cell(size(researcherID));
         researchers         = cell(size(researcherID));
         
-        %       if ~singleton
-        %         animals = obj.getAnimalsDJ();
-        %         researchers = obj.getResearcherDJ();
-        %         %Change to cell format for this case
-        %         researcher_cell = cell(length(researchers),1);
-        %         for i=1:length(researchers)
-        %             researcher_cell{i} = researchers(i);
-        %         end
-        %         researchers = researcher_cell;
-        %
-        %
-        %         fields = fieldnames(animals{1})';
-        %         fields{2,1} = {};
-        %         empty_animal = struct(fields{:});
-        %         for iID = 1:numel(researcherID)
-        %             if strcmp(researchers{iID}.ID,animals{iID}(1).owner)
-        %                 researchers{iID}.animals = animals{iID};
-        %             else
-        %                 researchers{iID}.animals = {empty_animal};
-        %                 animals = [animals(1:iID-1); {empty_animal}; animals(iID:end)];
-        %             end
-        %         end
-        %
-        %       else
         for iID = 1:numel(researcherID)
             animals{iID} = obj.getAnimalsDJ(researcherID{iID});
             researchers{iID}  = obj.getResearcherDJ(researcherID{iID}, false);
@@ -5743,9 +5721,6 @@ classdef AnimalDatabase < handle
             animal_auto_act_items);  
         obj.insertActivity('automatic', act_auto_animal, ...
             animal_auto_act_items, key_subj);  
-        
-        
-        %obj.refreshResearchers_Animals()
          
 %         if ~isempty(animal.actItems)    %if action item exists
 %             for i = 1:length(animal.actItems)
@@ -6028,30 +6003,55 @@ classdef AnimalDatabase < handle
               'session_date', log_date ...
               );
             
-            if isempty(acquisition.Session & session_date)
+            %Get session number
+            if isempty(fetch(acquisition.Session & session))
                 session.session_number = 1;
             else
-                number = fetchn(acquisition.Session & session_date, 'session_number');
+                number = fetchn(acquisition.Session & session, 'session_number');
                 session.session_number = max(number) + 1;
             end
             
-            session.session_start_time = [log_date, springf(' %2d:%2d:00', ...
-                filledLog.trainStart(1), filledLog.trainStart(2))];
-            session.session_end_time = [log_date, sprintf(' %2d:%2d:00', ...
-                log.trainEnd(1), log.trainEnd(2))];
+            %ALS -- correct format of start_time and end_time (numeric from ViRMEn)
+            if (isnumeric(filledLog.trainStart) && isscalar(filledLog.trainStart))
+                ts_str = num2str(filledLog.trainStart, '%04.f');
+                stime = [ts_str(1:2) ':' ts_str(3:4) ':00'];
+            else
+                stime = sprintf('%2d:%2d:00', filledLog.trainStart(1), filledLog.trainStart(2));
+            end
+            session.session_start_time = [log_date, ' ', stime];
+            
+            if (isnumeric(filledLog.trainEnd) && isscalar(filledLog.trainEnd))
+                te_str = num2str(filledLog.trainEnd, '%04.f');
+                etime = [te_str(1:2) ':' te_str(3:4) ':00'];
+            else
+                etime = sprintf('%2d:%2d:00', filledLog.trainEnd(1), filledLog.trainEnd(2));
+            end
+            session.session_end_time = [log_date, ' ', etime];
             
             % ingest location
             key_location.location = filledLog.rigName;
             inserti(lab.Location, key_location)
 
-            session.location = filledLog.rigName;
+            session.session_location = filledLog.rigName;
             session.task = 'Towers';
             session.level = filledLog.mainMazeID;
             session.stimulus_bank = filledLog.stimulusBank;
-            session.stimulus_set = filledLog.stimulusSet;
-            session.ball_squal = filledLog.squal;
+            session.set_id = filledLog.stimulusSet;
+            %session.ball_squal = filledLog.squal;
             session.session_performance = filledLog.performance;
-
+            
+            %Prepare session_protocol
+            session_protocol = '';
+            for i=1:length(filledLog.behavProtocol)
+                session_protocol = [session_protocol ...
+                    filledLog.behavProtocol{i} ' '];
+            end
+            session_protocol = session_protocol(1:end-1);
+            session.session_protocol = session_protocol;
+            
+            %Session code_version
+            session.session_code_version = filledLog.versionInfo;
+            
             insert(acquisition.Session, session)
         end
 
@@ -6101,7 +6101,7 @@ classdef AnimalDatabase < handle
     
     %----- Display a GUI for viewing and interacting with the database plus daily information
     function gui(obj, personID)
-      tic
+
       if nargin < 2
         personID      = [];
       end
@@ -6123,7 +6123,7 @@ classdef AnimalDatabase < handle
       
       %% Setup timers
       obj.setupUpdateTimer();
-      toc
+
     end
     
     %----- Close the GUI figure and stop live updates
@@ -6434,7 +6434,6 @@ classdef AnimalDatabase < handle
       
       %% Loop through researchers sequentially
       for iID = 1:numel(researcherID)
-        %%Check tomorrow, ALS
         %% See if there are any animals on the should-care list
         animals               = obj.pullAnimalList(researcherID{iID});
         [doCare,~,animals]    = obj.shouldICare(animals, personID);
