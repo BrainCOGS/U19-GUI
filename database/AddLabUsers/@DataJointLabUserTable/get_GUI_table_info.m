@@ -20,9 +20,9 @@ GUI_info.default             = '';
 GUI_info.list_values         = {};
 GUI_info.example_value       = '';
 GUI_info.tooltip             = 'username';
-GUI_info.format              = '^[a-zA-Z0-9]+([._]?[a-zA-Z0-9]+)*$';
-GUI_info.formaterr           = ['Only allowed alphanumeric, ''.'' and ''_'' charcaters', ...
-                                 newline 'Field cannot start, end or have double ''.'' or ''_'''];
+GUI_info.format              = '^[a-zA-Z0-9]+([.]?[a-zA-Z0-9]+)*$';
+GUI_info.formaterr           = ['Only allowed alphanumeric and ''.'' charcaters', ...
+                                 newline 'Field cannot start, end or have double ''.'''];
 
 f.name                = 'user_nickname';
 f.gui_type            = 'edit';
@@ -31,9 +31,9 @@ f.default             = '';
 f.list_values         = {};
 f.example_value       = '';
 f.tooltip             = 'same as netID for new users, for old users, this is used in the folder name etc';
-f.format              = '^[a-zA-Z0-9]+([._]?[a-zA-Z0-9]+)*$';
-f.formaterr           = ['Only allowed alphanumeric, ''.'' and ''_'' charcaters', ...
-                                 newline 'Field cannot start, end or have double ''.'' or ''_'''];
+f.format              = '^[a-zA-Z0-9]+([.]?[a-zA-Z0-9]+)*$';
+f.formaterr           = ['Only allowed alphanumeric and ''.'' charcaters', ...
+                                 newline 'Field cannot start, end or have double ''.'''];
 GUI_info = [GUI_info, f];
 
 f.name                = 'full_name';
