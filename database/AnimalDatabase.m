@@ -440,20 +440,20 @@ classdef AnimalDatabase < handle
     
     %----- Convert serial date number [e.g. from now()] to HHMM format
     function hhmm = datenum2time(when)
-      if nargin < 1
-        when    = now();
-      end
-      switch numel(when)
-        case 1
-          when  = datevec(when);
-        case 2
-          when  = [0 0 0 when];
-        case 6
-        otherwise
-          error('AnimalDatabase:datenum2time', 'when must either be a serial date number e.g. as returned by now(), or a date vector as returned by clock().');
-      end
-%       hhmm      = when(4:5);
-      hhmm      = when(4)*100 + when(5);
+        if nargin < 1
+            when    = now();
+        end
+        switch numel(when)
+            case 1
+                when  = datevec(when);
+            case 2
+                when  = [0 0 0 when];
+            case 6
+            otherwise
+                error('AnimalDatabase:datenum2time', 'when must either be a serial date number e.g. as returned by now(), or a date vector as returned by clock().');
+        end
+        %       hhmm      = when(4:5);
+        hhmm      = when(4)*100 + when(5);
     end
     
     %----- Convert HHMM to a fraction of a day
@@ -493,27 +493,28 @@ classdef AnimalDatabase < handle
     %----- Convert a HHMM format number to hours and minutes in 24-hour format
     function [hour, minute] = num2time(number)
         
-      if ischar(number)
+        if ischar(number)
             t = datevec(datetime(number));
             hour = t(4);
             minute = t(5);
-      else  
-      switch numel(number)
-        case 1
-          hour      = floor(number / 100);
-          minute    = number - 100*hour;
-        case 2
-          hour      = number(1);
-          minute    = number(2);
-        otherwise          
-          error('AnimalDatabase:num2time', 'Invalid TIME data, should either be a single HHMM number or a pair (HH,MM).');
-      end
-      
-      if hour < 0 || hour > 23 || minute < 0 || minute > 59 || minute ~= floor(minute)
-        error('AnimalDatabase:num2time', 'Invalid TIME data %.4g" with hour = %.3g, minute = %.3g.', number, hour, minute);
-      end
-      end
+        else
+            switch numel(number)
+                case 1
+                    hour      = floor(number / 100);
+                    minute    = number - 100*hour;
+                case 2
+                    hour      = number(1);
+                    minute    = number(2);
+                otherwise
+                    error('AnimalDatabase:num2time', 'Invalid TIME data, should either be a single HHMM number or a pair (HH,MM).');
+            end
+            
+            if hour < 0 || hour > 23 || minute < 0 || minute > 59 || minute ~= floor(minute)
+                error('AnimalDatabase:num2time', 'Invalid TIME data %.4g" with hour = %.3g, minute = %.3g.', number, hour, minute);
+            end
+        end
     end
+    
     
       function c = datestr_comparison(s1,s2)
         % Function to compare dates (as strings) when there are in format YYYY-MM-DDHH:MM:SS
@@ -820,7 +821,6 @@ classdef AnimalDatabase < handle
           first = false;
       end
       %ALS, function to get again animals and researchers info, reset logs  
-
       obj.getAnimalsDJ({}, false, true);
       if first
         obj.pullOverview(true);    
@@ -4028,7 +4028,12 @@ classdef AnimalDatabase < handle
       if nargin < 1
         interactive   = true;
       end
-            
+      
+
+      %ALS get all animals and researchers from the beginning
+      obj.refreshResearchers_Animals(true)
+
+      
       %% Set self identification
       if exist('RigParameters', 'class')
         obj.whoAmI    = RigParameters.rig;
@@ -5063,50 +5068,18 @@ classdef AnimalDatabase < handle
     
     %% ALS_correct, get num animals for each lab user
     obj.NumAnimalsUsers = AnimalDatabase.getNumAnimalsUsers();
-%      
-%      %Then the Researchers
-%      query = lab.User() & 'primary_tech = "N/A"';
-%      [full_name, user_id, presence, day_cutoff_time, ...
-%          phone, carrier, email, slack, contact_via, ...
-%          tech_responsibility, slack_webhook] = ...
-%             query.fetchn('full_name', 'user_id', 'presence', 'day_cutoff_time', ...
-%                          'phone', 'mobile_carrier', 'email', 'slack', 'contact_via', ...
-%                          'tech_responsibility', 'slack_webhook');
-%      obj.Researchers =  struct('Name', full_name,               ...
-%                             'ID', user_id,                      ...
-%                       'Presence', presence,                     ...
-%                  'DayCutoffTime', day_cutoff_time,              ...
-%                          'Phone', phone,                        ...
-%                        'Carrier', carrier,                      ...
-%                          'Email', email,                        ...
-%                          'Slack', slack,                        ...
-%                     'ContactVia', contact_via,                  ...
-%             'TechResponsibility', tech_responsibility,          ...
-%                       'Protocol', fetchn(lab.UserProtocol & query, 'protocol'), ...
-%                   'slackWebhook', slack_webhook);
-%       
-%       [user_ids, PIs, secondary_contacts] = fetchn(...
-%           query * lab.UserLab * lab.Lab * lab.UserSecondaryContact, ...
-%           'user_id', 'pi_name', 'secondary_contact');
-%       
-%       for l_idx = 1:length(user_ids)
-%         obj.Researchers(l_idx).PI = PIs(l_idx);
-%         obj.Researchers(l_idx).SecondaryContact = secondary_contacts(l_idx);
-%       end
-%       overview_dj.Researchers = obj.Researchers';
-%     
       
-      % Then the NotificationSettings; take only the most up-to-date entry
-      all_dates = fetchn(lab.NotificationSettings, 'notification_settings_date');
-      query = lab.NotificationSettings & ['notification_settings_date = "' all_dates{end} '"'];
-      [max_response_time, change_cutoff_time, weekly_digest_day, weekly_digest_time] = ...
-          query.fetchn('max_response_time', 'change_cutoff_time', 'weekly_digest_day', 'weekly_digest_time');
-      obj.NotificationSettings.MaxResponseTime  = max_response_time;
-      obj.NotificationSettings.ChangeCutoffTime = cell2mat(change_cutoff_time);
-      obj.NotificationSettings.WeeklyDigestDay  = char(weekly_digest_day);
-      obj.NotificationSettings.WeeklyDigestTime = cell2mat(weekly_digest_time);
-      overview_dj.NotificationSettings = obj.NotificationSettings;
-      overview = overview_dj;      
+    % Then the NotificationSettings; take only the most up-to-date entry
+    all_dates = fetchn(lab.NotificationSettings, 'notification_settings_date');
+    query = lab.NotificationSettings & ['notification_settings_date = "' all_dates{end} '"'];
+    [max_response_time, change_cutoff_time, weekly_digest_day, weekly_digest_time] = ...
+        query.fetchn('max_response_time', 'change_cutoff_time', 'weekly_digest_day', 'weekly_digest_time');
+    obj.NotificationSettings.MaxResponseTime  = max_response_time;
+    obj.NotificationSettings.ChangeCutoffTime = cell2mat(change_cutoff_time);
+    obj.NotificationSettings.WeeklyDigestDay  = char(weekly_digest_day);
+    obj.NotificationSettings.WeeklyDigestTime = cell2mat(weekly_digest_time);
+    overview_dj.NotificationSettings = obj.NotificationSettings;
+    overview = overview_dj;
     end
     
     
@@ -5131,7 +5104,6 @@ classdef AnimalDatabase < handle
         %% Loop through researchers and their data sheets
         animals             = cell(size(researcherID));
         researchers         = cell(size(researcherID));
-        
         for iID = 1:numel(researcherID)
             animals{iID} = obj.getAnimalsDJ(researcherID{iID});
             researchers{iID}  = obj.getResearcherDJ(researcherID{iID}, false);
@@ -5721,6 +5693,9 @@ classdef AnimalDatabase < handle
             animal_auto_act_items);  
         obj.insertActivity('automatic', act_auto_animal, ...
             animal_auto_act_items, key_subj);  
+        
+        
+        %obj.refreshResearchers_Animals()
          
 %         if ~isempty(animal.actItems)    %if action item exists
 %             for i = 1:length(animal.actItems)
@@ -5996,7 +5971,7 @@ classdef AnimalDatabase < handle
           end
       end
       
-      % ingest session
+        % ingest session
         if ~isnan(filledLog.trainStart) && ~isempty(filledLog.mainMazeID) % TODO: ingest trainings without mainMazeID
             session = struct(...
               'subject_fullname', animalID, ...
@@ -6105,9 +6080,6 @@ classdef AnimalDatabase < handle
       if nargin < 2
         personID      = [];
       end
-      
-      %ALS get all animals and researchers from the beginning
-      obj.refreshResearchers_Animals(true)
             
       %% Layout the GUI display
       obj.layoutGUI();
@@ -6123,7 +6095,6 @@ classdef AnimalDatabase < handle
       
       %% Setup timers
       obj.setupUpdateTimer();
-
     end
     
     %----- Close the GUI figure and stop live updates
